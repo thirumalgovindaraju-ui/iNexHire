@@ -1,0 +1,311 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  RECRUITER
+  ADMIN
+}
+
+enum InterviewStatus {
+  PENDING      // invite sent, not started
+  IN_PROGRESS  // candidate currently in room
+  COMPLETED    // candidate finished
+  EVALUATED    // AI has scored + report generated
+  EXPIRED      // invite link expired
+}
+
+enum CandidateDecision {
+  MOVE_FORWARD
+  REJECT
+  ON_HOLD
+  PENDING
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum ProctorEventType {
+  TAB_SWITCH
+  FACE_NOT_DETECTED
+  MULTIPLE_FACES
+  COPY_PASTE
+  FULLSCREEN_EXIT
+  MIC_MUTED
+}
+
+// ─── Models ───────────────────────────────────────────────────────────────────
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users    User[]
+  openings Opening[]
+
+  @@map("organizations")
+}
+
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  passwordHash   String
+  name           String
+  role           UserRole @default(RECRUITER)
+  organizationId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  openings     Opening[]
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+model Opening {
+  id             String     @id @default(cuid())
+  title          String
+  department     String?
+  location       String?
+  jobDescription String     @db.Text
+  skills         String[]   // extracted by AI
+  difficulty     Difficulty @default(MEDIUM)
+  questionCount  Int        @default(10)
+  isActive       Boolean    @default(true)
+  createdById    String
+  organizationId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdBy    User         @relation(fields: [createdById], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id])
+  questions    Question[]
+  candidates   Candidate[]
+
+  @@map("openings")
+}
+
+model Question {
+  id        String  @id @default(cuid())
+  openingId String
+  text      String  @db.Text
+  type      String  @default("behavioral") // behavioral | technical | situational
+  order     Int
+  timeLimit Int     @default(120) // seconds per question
+
+  createdAt DateTime @default(now())
+
+  opening   Opening    @relation(fields: [openingId], references: [id], onDelete: Cascade)
+  responses Response[]
+
+  @@map("questions")
+}
+
+model Candidate {
+  id        String  @id @default(cuid())
+  name      String
+  email     String
+  phone     String?
+  openingId String
+  resumeUrl String? // S3 URL
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  opening    Opening     @relation(fields: [openingId], references: [id])
+  interviews Interview[]
+
+  @@unique([email, openingId])
+  @@map("candidates")
+}
+
+model Interview {
+  id          String          @id @default(cuid())
+  candidateId String
+  inviteToken String          @unique @default(cuid())
+  status      InterviewStatus @default(PENDING)
+  startedAt   DateTime?
+  completedAt DateTime?
+  expiresAt   DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  candidate    Candidate    @relation(fields: [candidateId], references: [id])
+  responses    Response[]
+  report       Report?
+  proctorLogs  ProctorLog[]
+
+  @@map("interviews")
+}
+
+model Response {
+  id          String  @id @default(cuid())
+  interviewId String
+  questionId  String
+  transcript  String? @db.Text  // STT output
+  audioUrl    String? // S3 URL
+  duration    Int?    // seconds
+  score       Int?    // 0–100, set by AI
+  feedback    String? @db.Text  // AI feedback per answer
+
+  createdAt DateTime @default(now())
+
+  interview Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  question  Question  @relation(fields: [questionId], references: [id])
+
+  @@unique([interviewId, questionId])
+  @@map("responses")
+}
+
+model Report {
+  id               String            @id @default(cuid())
+  interviewId      String            @unique
+  overallScore     Int               // 0–100
+  recommendation   String            // STRONG_HIRE | HIRE | NEUTRAL | REJECT
+  summary          String            @db.Text
+  strengths        String[]
+  weaknesses       String[]
+  skillScores      Json              // { "Communication": 85, "React": 72 }
+  decision         CandidateDecision @default(PENDING)
+  decisionNotes    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  interview Interview @relation(fields: [interviewId], references: [id])
+
+  @@map("reports")
+}
+
+model ProctorLog {
+  id          String           @id @default(cuid())
+  interviewId String
+  eventType   ProctorEventType
+  timestamp   DateTime         @default(now())
+  metadata    Json?
+
+  interview Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  @@map("proctor_logs")
+}
+
+// ─── Enterprise Models ────────────────────────────────────────────────────────
+
+model OfferLetter {
+  id          String   @id @default(cuid())
+  candidateId String
+  interviewId String
+  baseSalary  Int
+  equity      Float?
+  signingBonus Int?
+  startDate   DateTime?
+  status      String   @default("DRAFT") // DRAFT | SENT | SIGNED | ACCEPTED | DECLINED | EXPIRED
+  pdfUrl      String?
+  signedAt    DateTime?
+  expiresAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  candidate Candidate @relation(fields: [candidateId], references: [id])
+  interview Interview @relation(fields: [interviewId], references: [id])
+
+  @@map("offer_letters")
+}
+
+model TalentPoolEntry {
+  id             String   @id @default(cuid())
+  candidateId    String   @unique
+  organizationId String
+  addedAt        DateTime @default(now())
+  lastContact    DateTime?
+  status         String   @default("AVAILABLE") // AVAILABLE | OPEN | PLACED | INACTIVE
+  notes          String?  @db.Text
+
+  candidate    Candidate    @relation(fields: [candidateId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@map("talent_pool")
+}
+
+model BiasAudit {
+  id        String   @id @default(cuid())
+  openingId String
+  flags     Json     // [{type, word, suggestion, severity}]
+  score     Int      // 0-100 compliance score
+  resolvedAt DateTime?
+  resolvedBy String?
+
+  createdAt DateTime @default(now())
+
+  opening Opening @relation(fields: [openingId], references: [id], onDelete: Cascade)
+
+  @@map("bias_audits")
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String?
+  action         String   // e.g. DECISION_CHANGED, OFFER_SENT, CANDIDATE_ADDED
+  resourceType   String   // INTERVIEW | CANDIDATE | OPENING | OFFER | INTEGRATION
+  resourceId     String
+  metadata       Json?    // before/after state, details
+  ipAddress      String?
+  userAgent      String?
+
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId, createdAt])
+  @@map("audit_logs")
+}
+
+model Integration {
+  id             String  @id @default(cuid())
+  organizationId String
+  provider       String  // GREENHOUSE | WORKDAY | BAMBOOHR | SLACK | LINKEDIN | etc
+  status         String  @default("DISCONNECTED")
+  config         Json?   // encrypted credentials/settings
+  lastSyncAt     DateTime?
+  syncCount      Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([organizationId, provider])
+  @@map("integrations")
+}
