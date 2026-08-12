@@ -54,8 +54,11 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users    User[]
-  openings Opening[]
+  users             User[]
+  openings          Opening[]
+  talentPoolEntries TalentPoolEntry[]
+  auditLogs         AuditLog[]
+  integrations      Integration[]
 
   @@map("organizations")
 }
@@ -110,6 +113,7 @@ model Opening {
   organization Organization @relation(fields: [organizationId], references: [id])
   questions    Question[]
   candidates   Candidate[]
+  biasAudit    BiasAudit?
 
   @@map("openings")
 }
@@ -141,8 +145,10 @@ model Candidate {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  opening    Opening     @relation(fields: [openingId], references: [id])
-  interviews Interview[]
+  opening         Opening          @relation(fields: [openingId], references: [id])
+  interviews      Interview[]
+  offerLetters    OfferLetter[]
+  talentPoolEntry TalentPoolEntry?
 
   @@unique([email, openingId])
   @@map("candidates")
@@ -164,6 +170,7 @@ model Interview {
   responses    Response[]
   report       Report?
   proctorLogs  ProctorLog[]
+  offerLetters OfferLetter[]
 
   @@map("interviews")
 }
@@ -260,7 +267,7 @@ model TalentPoolEntry {
 
 model BiasAudit {
   id        String   @id @default(cuid())
-  openingId String
+  openingId String   @unique
   flags     Json     // [{type, word, suggestion, severity}]
   score     Int      // 0-100 compliance score
   resolvedAt DateTime?

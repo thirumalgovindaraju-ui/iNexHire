@@ -15,6 +15,7 @@ import reportRoutes from './routes/report.routes';
 import dashboardRoutes from './routes/dashboard.routes';
 import uploadRoutes from './routes/upload.routes';
 import adaptiveRoutes from './routes/adaptive.routes';
+import complianceRoutes from './routes/compliance.routes';
 
 export function createApp() {
   const app = express();
@@ -61,6 +62,7 @@ export function createApp() {
   app.use('/api/reports', reportRoutes);
   app.use('/api/dashboard', dashboardRoutes);
   app.use('/api/upload', uploadRoutes);
+  app.use('/api/compliance', complianceRoutes);
 
   // ─── 404 ───────────────────────────────────────────────────────────────────
   app.use((_req, res) => {
