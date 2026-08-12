@@ -9,7 +9,7 @@ const INIT_MESSAGES: Message[] = [
   { role: 'bot', text: "Hi! 👋 I'm Aria, your AI hiring assistant from Acme Corp. I can answer questions about the role, help you schedule your interview, or check your application status. How can I help?", time: 'just now' },
 ];
 
-const QUICK_REPLIES = ['What is the interview process?', 'When will I hear back?', 'What's the salary range?', 'Can I reschedule my interview?'];
+const QUICK_REPLIES = ['What is the interview process?', 'When will I hear back?', "What's the salary range?", 'Can I reschedule my interview?'];
 
 const BOT_RESPONSES: Record<string, string> = {
   'What is the interview process?': "Great question! The process has 3 stages:\n1️⃣ AI Video Interview (30 min, at your convenience)\n2️⃣ Technical Assessment (if applicable)\n3️⃣ Final Round with hiring manager\n\nYou'll receive results within 48 hours of each stage. Ready to start?",

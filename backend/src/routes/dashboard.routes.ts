@@ -36,11 +36,8 @@ router.get('/', async (req, res, next) => {
         take: 10,
         orderBy: { updatedAt: 'desc' },
         include: {
-          candidate: { select: { name: true, email: true } },
+          candidate: { select: { name: true, email: true, opening: { select: { title: true } } } },
           report: { select: { overallScore: true, recommendation: true, decision: true } },
-          candidate: {
-            include: { opening: { select: { title: true } } },
-          },
         },
       }),
       prisma.opening.findMany({

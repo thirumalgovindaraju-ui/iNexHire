@@ -193,7 +193,7 @@ export default function ReportDetail() {
           )}
 
           {/* Q&A Transcript */}
-          {report.responses?.length > 0 && (
+          {report.responses && report.responses.length > 0 && (
             <Card>
               <div className="px-5 py-4 border-b border-surface-100">
                 <h3 className="font-semibold text-surface-900">Question-by-Question</h3>

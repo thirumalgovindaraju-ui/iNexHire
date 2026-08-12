@@ -194,4 +194,35 @@ export const uploadApi = {
   },
 };
 
+// ─── Offer Letters ────────────────────────────────────────────────────────────
+
+export const offersApi = {
+  list: async () => {
+    const res = await apiClient.get('/offers');
+    return res.data.offers;
+  },
+  eligible: async () => {
+    const res = await apiClient.get('/offers/eligible');
+    return res.data.interviews;
+  },
+  create: async (data: {
+    candidateId: string;
+    interviewId: string;
+    baseSalary: number;
+    equity?: number;
+    signingBonus?: number;
+    startDate: string;
+    reportingTo: string;
+    department?: string;
+    benefits?: string[];
+  }) => {
+    const res = await apiClient.post('/offers', data);
+    return res.data.offer;
+  },
+  send: async (id: string) => {
+    const res = await apiClient.patch(`/offers/${id}/send`);
+    return res.data.offer;
+  },
+};
+
 export { extractError };

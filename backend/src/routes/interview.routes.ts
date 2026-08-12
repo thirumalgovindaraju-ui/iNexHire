@@ -51,10 +51,9 @@ router.get('/start/:token', async (req, res, next) => {
     const interview = await prisma.interview.findUnique({
       where: { inviteToken: req.params.token },
       include: {
-        candidate: { select: { id: true, name: true, email: true } },
-        responses: { select: { questionId: true } },
         candidate: {
-          include: {
+          select: {
+            id: true, name: true, email: true,
             opening: {
               include: {
                 questions: { orderBy: { order: 'asc' } },
@@ -63,6 +62,7 @@ router.get('/start/:token', async (req, res, next) => {
             },
           },
         },
+        responses: { select: { questionId: true } },
       },
     });
 

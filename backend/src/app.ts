@@ -16,6 +16,7 @@ import dashboardRoutes from './routes/dashboard.routes';
 import uploadRoutes from './routes/upload.routes';
 import adaptiveRoutes from './routes/adaptive.routes';
 import complianceRoutes from './routes/compliance.routes';
+import offerRoutes from './routes/offer.routes';
 
 export function createApp() {
   const app = express();
@@ -63,6 +64,7 @@ export function createApp() {
   app.use('/api/dashboard', dashboardRoutes);
   app.use('/api/upload', uploadRoutes);
   app.use('/api/compliance', complianceRoutes);
+  app.use('/api/offers', offerRoutes);
 
   // ─── 404 ───────────────────────────────────────────────────────────────────
   app.use((_req, res) => {

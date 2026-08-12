@@ -1,0 +1,152 @@
+// ─── ADD THESE MODELS TO THE END OF schema.prisma ────────────────────────────
+// Run: npx prisma migrate dev --name enterprise_models
+
+model SentimentReport {
+  id              String   @id @default(cuid())
+  interviewId     String   @unique
+  confidence      Int      // 0-100
+  engagement      Int      // 0-100
+  clarity         Int      // 0-100
+  stress          Int      // 0-100
+  deceptionScore  Int      // 0-100
+  overallSentiment String  // POSITIVE | NEUTRAL | NEGATIVE
+  emotionTimeline Json     // [{questionIndex, confidence, engagement, clarity, stress}]
+  summary         String
+  createdAt       DateTime @default(now())
+
+  interview Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  @@map("sentiment_reports")
+}
+
+model CultureFitScore {
+  id          String   @id @default(cuid())
+  interviewId String   @unique
+  overall     Int      // 0-100
+  dimensions  Json     // { [dimensionName]: { score: number, evidence: string } }
+  summary     String
+  recommendation String // STRONG_FIT | FIT | NEUTRAL | POOR_FIT
+  createdAt   DateTime @default(now())
+
+  interview Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  @@map("culture_fit_scores")
+}
+
+model RetentionPrediction {
+  id              String   @id @default(cuid())
+  interviewId     String   @unique
+  retentionScore  Int      // 0-100
+  flightRisk      String   // LOW | MEDIUM | HIGH
+  riskFactors     Json     // [{ factor: string, severity: string, mitigation: string }]
+  positiveFactors Json     // [string]
+  predictedTenure String   // e.g. "2-3 years"
+  summary         String
+  createdAt       DateTime @default(now())
+
+  interview Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  @@map("retention_predictions")
+}
+
+model Scorecard {
+  id          String   @id @default(cuid())
+  openingId   String
+  createdBy   String
+  title       String
+  dimensions  Json     // [{ name, weight, description, scoringGuide }]
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  opening     Opening  @relation(fields: [openingId], references: [id], onDelete: Cascade)
+  creator     User     @relation(fields: [createdBy], references: [id])
+  evaluations ScorecardEvaluation[]
+
+  @@map("scorecards")
+}
+
+model ScorecardEvaluation {
+  id          String   @id @default(cuid())
+  scorecardId String
+  interviewId String
+  evaluatorId String
+  scores      Json     // { [dimensionName]: { score: number, notes: string } }
+  overallScore Int
+  notes       String?
+  recommendation String // STRONG_HIRE | HIRE | NEUTRAL | REJECT
+  createdAt   DateTime @default(now())
+
+  scorecard   Scorecard @relation(fields: [scorecardId], references: [id])
+  interview   Interview @relation(fields: [interviewId], references: [id])
+  evaluator   User      @relation(fields: [evaluatorId], references: [id])
+
+  @@map("scorecard_evaluations")
+}
+
+model PanelVote {
+  id          String   @id @default(cuid())
+  interviewId String
+  userId      String
+  vote        String   // STRONG_HIRE | HIRE | NEUTRAL | REJECT
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  interview   Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id])
+
+  @@unique([interviewId, userId])
+  @@map("panel_votes")
+}
+
+model ChatSession {
+  id             String   @id @default(cuid())
+  candidateId    String
+  openingId      String
+  messages       Json     // [{ role: 'user'|'assistant', content: string, timestamp: string }]
+  status         String   @default("active") // active | closed
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  candidate      Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  opening        Opening   @relation(fields: [openingId], references: [id])
+
+  @@map("chat_sessions")
+}
+
+model Notification {
+  id             String   @id @default(cuid())
+  userId         String
+  organizationId String
+  type           String   // INTERVIEW_COMPLETED | REPORT_READY | OFFER_SENT | BIAS_FLAG | PANEL_VOTE
+  title          String
+  message        String
+  resourceType   String   // INTERVIEW | OPENING | CANDIDATE | OFFER
+  resourceId     String
+  read           Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model BrandingConfig {
+  id             String   @id @default(cuid())
+  organizationId String   @unique
+  logoUrl        String?
+  primaryColor   String   @default("#4F46E5")
+  secondaryColor String   @default("#7C3AED")
+  companyName    String?
+  tagline        String?
+  emailTemplate  String?
+  customDomain   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("branding_configs")
+}

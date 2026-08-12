@@ -1,6 +1,7 @@
 // src/routes/compliance.routes.ts
 import { Router } from 'express';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../config/db';
 import { authenticate } from '../middleware/auth';
 import { validate } from '../middleware/validate';
@@ -28,7 +29,7 @@ router.post(
         where: { id: openingId, organizationId: req.user!.organizationId },
         include: { questions: true },
       });
-      if (!opening) throw new AppError('Opening not found', 404);
+      if (!opening) throw new AppError(404, 'Opening not found');
 
       // Choose the text to scan
       const textToScan =
@@ -44,11 +45,11 @@ router.post(
         where: { openingId },
         create: {
           openingId,
-          flags: result.flags,
+          flags: result.flags as unknown as Prisma.InputJsonValue,
           score: result.score,
         },
         update: {
-          flags: result.flags,
+          flags: result.flags as unknown as Prisma.InputJsonValue,
           score: result.score,
           resolvedAt: null,
           resolvedBy: null,
@@ -71,7 +72,7 @@ router.get('/:openingId', async (req, res, next) => {
     const opening = await prisma.opening.findFirst({
       where: { id: openingId, organizationId: req.user!.organizationId },
     });
-    if (!opening) throw new AppError('Opening not found', 404);
+    if (!opening) throw new AppError(404, 'Opening not found');
 
     const audit = await prisma.biasAudit.findUnique({ where: { openingId } });
     res.json({ success: true, audit: audit ?? null });
@@ -88,11 +89,11 @@ router.patch('/:openingId/resolve', async (req, res, next) => {
     const opening = await prisma.opening.findFirst({
       where: { id: openingId, organizationId: req.user!.organizationId },
     });
-    if (!opening) throw new AppError('Opening not found', 404);
+    if (!opening) throw new AppError(404, 'Opening not found');
 
     const audit = await prisma.biasAudit.update({
       where: { openingId },
-      data: { resolvedAt: new Date(), resolvedBy: req.user!.id },
+      data: { resolvedAt: new Date(), resolvedBy: req.user!.userId },
     });
 
     res.json({ success: true, audit });

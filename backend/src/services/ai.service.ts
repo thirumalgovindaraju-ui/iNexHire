@@ -312,3 +312,52 @@ If no bias is detected, return: { "score": 100, "flags": [] }`;
     return { score: 100, flags: [] };
   }
 }
+
+// ─── Generate Offer Letter ─────────────────────────────────────────────────────
+
+export async function generateOfferLetter(params: {
+  candidateName: string;
+  jobTitle: string;
+  department: string;
+  salary: string;
+  startDate: string;
+  reportingTo: string;
+  companyName: string;
+  benefits?: string[];
+}): Promise<string> {
+  const prompt = `Generate a professional, formal offer letter for the following:
+
+Candidate: ${params.candidateName}
+Job Title: ${params.jobTitle}
+Department: ${params.department}
+Salary: ${params.salary}
+Start Date: ${params.startDate}
+Reports To: ${params.reportingTo}
+Company: ${params.companyName}
+Benefits: ${params.benefits?.join(', ') || 'Health insurance, 18 days PTO, flexible working'}
+
+Write a warm but professional offer letter. Include:
+1. Congratulations opening
+2. Role and reporting structure
+3. Compensation details
+4. Benefits summary
+5. Start date and next steps
+6. Acceptance deadline (14 days from today)
+7. Professional closing
+
+Format as HTML with proper paragraph tags. Keep it concise — one page.
+Return ONLY the HTML content, no markdown, no explanation.`;
+
+  try {
+    const res = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1500,
+      temperature: 0.3,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const text = res.content[0].type === 'text' ? res.content[0].text : '';
+    return text.replace(/```html|```/g, '').trim();
+  } catch {
+    return `<p>Dear ${params.candidateName},</p><p>We are pleased to offer you the position of ${params.jobTitle} at ${params.companyName}.</p><p>Please contact HR for full details.</p>`;
+  }
+}
