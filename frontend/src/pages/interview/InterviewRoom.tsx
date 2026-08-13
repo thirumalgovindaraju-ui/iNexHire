@@ -56,6 +56,7 @@ export default function InterviewRoom() {
 
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const audioChunks = useRef<Blob[]>([]);
+  const recordingStream = useRef<MediaStream | null>(null);
   const recognition = useRef<any>(null);
   const recognitionShouldRun = useRef(false);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -68,6 +69,14 @@ export default function InterviewRoom() {
   useEffect(() => { console.log('[InterviewRoom] state:stream =', stream); }, [stream]);
   useEffect(() => { console.log('[InterviewRoom] state:error =', error); }, [error]);
   useEffect(() => { console.log('[InterviewRoom] state:sttAvailable =', sttAvailable); }, [sttAvailable]);
+
+  // Detect SpeechRecognition support up front so the manual-typing fallback shows
+  // immediately in non-Chrome browsers, instead of only after a failed recording attempt.
+  useEffect(() => {
+    const supported = Boolean((window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition);
+    console.log('[InterviewRoom] SpeechRecognition supported in this browser =', supported);
+    setSttAvailable(supported);
+  }, []);
 
   // Load session if not in store
   useEffect(() => {
@@ -171,44 +180,58 @@ export default function InterviewRoom() {
   }
 
   async function startRecording() {
-    console.log('[InterviewRoom] mic button clicked — explicitly checking microphone permission');
+    console.log('[InterviewRoom] mic button clicked');
+
+    // Step 1: get a fresh, dedicated audio stream for this recording. Reusing the
+    // mount-time preview stream (or probing permission with a second throwaway
+    // getUserMedia call and stopping it) risks ending the shared track on some
+    // browsers/drivers, which makes MediaRecorder.start() throw InvalidStateError
+    // later — surfacing as a generic "Could not start recording".
+    console.log('[InterviewRoom] step 1: requesting microphone permission for this recording');
+    let micStream: MediaStream;
     try {
-      const permissionCheck = await navigator.mediaDevices.getUserMedia({ audio: true });
-      console.log('[InterviewRoom] microphone permission check passed');
-      permissionCheck.getTracks().forEach((t) => t.stop());
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log(
+        '[InterviewRoom] step 1 complete: permission granted, tracks =',
+        micStream.getTracks().map((t) => `${t.kind}:${t.readyState}`)
+      );
     } catch (err: any) {
       const detail = `${err?.name ?? 'Error'}: ${err?.message ?? 'Unknown error'}`;
-      console.error('[InterviewRoom] microphone permission check failed:', detail, err);
+      console.error('[InterviewRoom] step 1 failed: microphone permission denied:', detail, err);
       setError(`Microphone access denied — ${detail}`);
       return;
     }
 
-    console.log('[InterviewRoom] startRecording called, stream =', stream);
-    if (!stream) {
-      console.warn('[InterviewRoom] no media stream available — cannot start recording');
-      setError('Microphone not available. Please allow microphone access and reload the page.');
-      return;
-    }
+    // Step 2: initialize and start MediaRecorder on that dedicated stream.
+    console.log('[InterviewRoom] step 2: initializing MediaRecorder');
+    recordingStream.current = micStream;
     audioChunks.current = [];
     try {
       const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg';
-      console.log('[InterviewRoom] initializing MediaRecorder with mimeType =', mimeType);
-      mediaRecorder.current = new MediaRecorder(stream, { mimeType });
+      console.log('[InterviewRoom] using mimeType =', mimeType);
+      mediaRecorder.current = new MediaRecorder(micStream, { mimeType });
       mediaRecorder.current.ondataavailable = (e) => {
         console.log('[InterviewRoom] ondataavailable, chunk size =', e.data.size);
         if (e.data.size > 0) audioChunks.current.push(e.data);
       };
       mediaRecorder.current.onerror = (e) => console.error('[InterviewRoom] MediaRecorder error:', e);
       mediaRecorder.current.start(1000);
-      console.log('[InterviewRoom] MediaRecorder started');
-      startRecognition();
-      setIsRecording(true);
-      setTranscript('');
-      setError('');
-    } catch (err) {
-      console.error('[InterviewRoom] failed to start recording:', err);
-      setError('Could not start recording. Please check your microphone permissions and try again.');
+      console.log('[InterviewRoom] step 2 complete: MediaRecorder started, state =', mediaRecorder.current.state);
+    } catch (err: any) {
+      const detail = `${err?.name ?? 'Error'}: ${err?.message ?? 'Unknown error'}`;
+      console.error('[InterviewRoom] step 2 failed: could not start MediaRecorder:', detail, err);
+      setError(`Could not start recording — ${detail}`);
+      micStream.getTracks().forEach((t) => t.stop());
+      recordingStream.current = null;
+      return;
     }
+
+    // Step 3: only start SpeechRecognition once the mic stream + recorder are confirmed live.
+    console.log('[InterviewRoom] step 3: starting SpeechRecognition');
+    setIsRecording(true);
+    setTranscript('');
+    setError('');
+    startRecognition();
   }
 
   async function stopRecording(): Promise<Blob> {
@@ -221,6 +244,8 @@ export default function InterviewRoom() {
       mediaRecorder.current.onstop = () => {
         const blob = new Blob(audioChunks.current, { type: mediaRecorder.current!.mimeType });
         console.log('[InterviewRoom] MediaRecorder stopped, blob size =', blob.size);
+        recordingStream.current?.getTracks().forEach((t) => t.stop());
+        recordingStream.current = null;
         resolve(blob);
       };
       mediaRecorder.current.stop();
