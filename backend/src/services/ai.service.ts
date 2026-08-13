@@ -37,28 +37,29 @@ Be concise and compelling. Use markdown formatting.`;
 // ─── Parse Skills from JD ─────────────────────────────────────────────────────
 
 export async function parseSkillsFromJD(jobDescription: string): Promise<string[]> {
-  const res = await openai.chat.completions.create({
-    model: MODEL,
-    messages: [
-      {
-        role: 'user',
-        content: `Extract the key technical and soft skills from this job description. Return ONLY a JSON array of strings, no other text.
+  try {
+    const res = await openai.chat.completions.create({
+      model: MODEL,
+      messages: [
+        {
+          role: 'user',
+          content: `Extract the key technical and soft skills from this job description. Return ONLY a JSON array of strings, no other text.
 
 Job Description:
 ${jobDescription}
 
 Example output: ["React", "Node.js", "Communication", "Problem Solving"]`,
-      },
-    ],
-    temperature: 0,
-    max_tokens: 300,
-  });
+        },
+      ],
+      temperature: 0,
+      max_tokens: 300,
+    });
 
-  const content = res.choices[0].message.content ?? '[]';
-  try {
+    const content = res.choices[0].message.content ?? '[]';
     const cleaned = content.replace(/```json|```/g, '').trim();
     return JSON.parse(cleaned);
-  } catch {
+  } catch (err) {
+    console.error('[ai.service] parseSkillsFromJD failed, falling back to []:', err);
     return [];
   }
 }
