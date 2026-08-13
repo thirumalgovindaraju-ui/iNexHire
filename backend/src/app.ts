@@ -23,8 +23,9 @@ export function createApp() {
 
   // ─── Security ──────────────────────────────────────────────────────────────
   app.use(helmet());
+  const allowedOrigins = [env.appUrl, 'https://salmon-smoke-034fd6400.7.azurestaticapps.net'];
   app.use(cors({
-    origin: env.isProd ? env.appUrl : '*',
+    origin: env.isProd ? allowedOrigins : '*',
     credentials: true,
   }));
 
