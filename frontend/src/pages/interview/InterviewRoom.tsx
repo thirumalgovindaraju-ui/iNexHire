@@ -52,10 +52,12 @@ export default function InterviewRoom() {
   const [completing, setCompleting] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [error, setError] = useState('');
+  const [sttAvailable, setSttAvailable] = useState(true);
 
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const audioChunks = useRef<Blob[]>([]);
   const recognition = useRef<any>(null);
+  const recognitionShouldRun = useRef(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   // Load session if not in store
@@ -99,31 +101,63 @@ export default function InterviewRoom() {
     return () => document.removeEventListener('visibilitychange', handler);
   }, [session]);
 
-  // Speech recognition (STT)
+  // Speech recognition (STT) — the browser's Web Speech API is the only transcription
+  // path (recorded audio is never uploaded), so a failure here means the candidate has
+  // no way to submit an answer unless we fall back to manual typing.
   function startRecognition() {
     const SpeechRecognition = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      console.warn('[InterviewRoom] SpeechRecognition not supported in this browser — live transcript disabled, audio recording still works');
+      console.warn('[InterviewRoom] SpeechRecognition not supported in this browser — falling back to manual transcript entry');
+      setSttAvailable(false);
       return;
     }
-    recognition.current = new SpeechRecognition();
-    recognition.current.continuous = true;
-    recognition.current.interimResults = true;
-    recognition.current.lang = 'en-US';
 
+    recognitionShouldRun.current = true;
     let finalText = '';
-    recognition.current.onresult = (e: any) => {
-      let interim = '';
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) finalText += e.results[i][0].transcript + ' ';
-        else interim += e.results[i][0].transcript;
-      }
-      setTranscript(finalText + interim);
+
+    const launch = () => {
+      const rec = new SpeechRecognition();
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.lang = 'en-US';
+
+      rec.onresult = (e: any) => {
+        let interim = '';
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          if (e.results[i].isFinal) finalText += e.results[i][0].transcript + ' ';
+          else interim += e.results[i][0].transcript;
+        }
+        setTranscript(finalText + interim);
+      };
+
+      rec.onerror = (e: any) => {
+        console.error('[InterviewRoom] SpeechRecognition error:', e.error);
+        // 'no-speech' fires constantly during normal pauses — not fatal, onend will restart it.
+        if (e.error === 'not-allowed' || e.error === 'service-not-allowed' || e.error === 'audio-capture') {
+          console.warn('[InterviewRoom] SpeechRecognition unavailable, falling back to manual transcript entry');
+          recognitionShouldRun.current = false;
+          setSttAvailable(false);
+        }
+      };
+
+      // Chrome/Edge stop continuous recognition after a few seconds of silence even
+      // with continuous:true — restart it transparently while the answer is still being recorded.
+      rec.onend = () => {
+        if (recognitionShouldRun.current) {
+          console.log('[InterviewRoom] SpeechRecognition ended unexpectedly, restarting');
+          launch();
+        }
+      };
+
+      recognition.current = rec;
+      rec.start();
     };
-    recognition.current.start();
+
+    launch();
   }
 
   function stopRecognition() {
+    recognitionShouldRun.current = false;
     recognition.current?.stop();
   }
 
@@ -314,12 +348,26 @@ export default function InterviewRoom() {
 
               {/* Transcript */}
               <div className="flex-1 bg-surface-800/50 rounded-2xl p-5 mb-6 min-h-28">
-                {transcript ? (
-                  <p className="text-surface-200 text-sm leading-relaxed">{transcript}</p>
+                {sttAvailable ? (
+                  transcript ? (
+                    <p className="text-surface-200 text-sm leading-relaxed">{transcript}</p>
+                  ) : (
+                    <p className="text-surface-500 text-sm italic">
+                      {isRecording ? 'Listening... speak your answer' : 'Press the microphone button to start recording your answer'}
+                    </p>
+                  )
                 ) : (
-                  <p className="text-surface-500 text-sm italic">
-                    {isRecording ? 'Listening... speak your answer' : 'Press the microphone button to start recording your answer'}
-                  </p>
+                  <div>
+                    <p className="text-yellow-400 text-xs mb-2">
+                      Live transcription isn't available in this browser — type your answer instead.
+                    </p>
+                    <textarea
+                      value={transcript}
+                      onChange={(e) => setTranscript(e.target.value)}
+                      placeholder="Type your answer here..."
+                      className="w-full bg-transparent text-surface-200 text-sm leading-relaxed resize-none outline-none min-h-20"
+                    />
+                  </div>
                 )}
               </div>
 
