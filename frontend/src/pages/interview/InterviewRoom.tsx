@@ -69,11 +69,20 @@ export default function InterviewRoom() {
 
   // Get camera stream
   useEffect(() => {
+    console.log('[InterviewRoom] requesting camera + microphone access');
     navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((s) => {
+      console.log('[InterviewRoom] camera + mic stream acquired:', s.getTracks().map((t) => t.kind));
       setStream(s);
       if (videoRef.current) videoRef.current.srcObject = s;
-    }).catch(() => {
-      navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => {});
+    }).catch((err) => {
+      console.warn('[InterviewRoom] camera+mic getUserMedia failed, retrying audio-only:', err);
+      navigator.mediaDevices.getUserMedia({ audio: true }).then((s) => {
+        console.log('[InterviewRoom] audio-only stream acquired:', s.getTracks().map((t) => t.kind));
+        setStream(s);
+      }).catch((err2) => {
+        console.error('[InterviewRoom] microphone access failed:', err2);
+        setError('Microphone access is required for this interview. Please allow microphone access in your browser and reload the page.');
+      });
     });
     return () => stream?.getTracks().forEach((t) => t.stop());
   }, []);
@@ -93,7 +102,10 @@ export default function InterviewRoom() {
   // Speech recognition (STT)
   function startRecognition() {
     const SpeechRecognition = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) return;
+    if (!SpeechRecognition) {
+      console.warn('[InterviewRoom] SpeechRecognition not supported in this browser — live transcript disabled, audio recording still works');
+      return;
+    }
     recognition.current = new SpeechRecognition();
     recognition.current.continuous = true;
     recognition.current.interimResults = true;
@@ -116,24 +128,44 @@ export default function InterviewRoom() {
   }
 
   async function startRecording() {
-    if (!stream) return;
+    console.log('[InterviewRoom] startRecording called, stream =', stream);
+    if (!stream) {
+      console.warn('[InterviewRoom] no media stream available — cannot start recording');
+      setError('Microphone not available. Please allow microphone access and reload the page.');
+      return;
+    }
     audioChunks.current = [];
-    const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg';
-    mediaRecorder.current = new MediaRecorder(stream, { mimeType });
-    mediaRecorder.current.ondataavailable = (e) => {
-      if (e.data.size > 0) audioChunks.current.push(e.data);
-    };
-    mediaRecorder.current.start(1000);
-    startRecognition();
-    setIsRecording(true);
-    setTranscript('');
+    try {
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg';
+      console.log('[InterviewRoom] initializing MediaRecorder with mimeType =', mimeType);
+      mediaRecorder.current = new MediaRecorder(stream, { mimeType });
+      mediaRecorder.current.ondataavailable = (e) => {
+        console.log('[InterviewRoom] ondataavailable, chunk size =', e.data.size);
+        if (e.data.size > 0) audioChunks.current.push(e.data);
+      };
+      mediaRecorder.current.onerror = (e) => console.error('[InterviewRoom] MediaRecorder error:', e);
+      mediaRecorder.current.start(1000);
+      console.log('[InterviewRoom] MediaRecorder started');
+      startRecognition();
+      setIsRecording(true);
+      setTranscript('');
+      setError('');
+    } catch (err) {
+      console.error('[InterviewRoom] failed to start recording:', err);
+      setError('Could not start recording. Please check your microphone permissions and try again.');
+    }
   }
 
   async function stopRecording(): Promise<Blob> {
+    console.log('[InterviewRoom] stopRecording called');
     return new Promise((resolve) => {
-      if (!mediaRecorder.current) return resolve(new Blob());
+      if (!mediaRecorder.current) {
+        console.warn('[InterviewRoom] stopRecording called with no active MediaRecorder');
+        return resolve(new Blob());
+      }
       mediaRecorder.current.onstop = () => {
         const blob = new Blob(audioChunks.current, { type: mediaRecorder.current!.mimeType });
+        console.log('[InterviewRoom] MediaRecorder stopped, blob size =', blob.size);
         resolve(blob);
       };
       mediaRecorder.current.stop();
