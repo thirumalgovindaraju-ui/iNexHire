@@ -60,6 +60,15 @@ export default function InterviewRoom() {
   const recognitionShouldRun = useRef(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
+  // Trace every state change for debugging the recording flow on the live site
+  useEffect(() => { console.log('[InterviewRoom] state:isRecording =', isRecording); }, [isRecording]);
+  useEffect(() => { console.log('[InterviewRoom] state:transcript =', transcript); }, [transcript]);
+  useEffect(() => { console.log('[InterviewRoom] state:submitting =', submitting); }, [submitting]);
+  useEffect(() => { console.log('[InterviewRoom] state:completing =', completing); }, [completing]);
+  useEffect(() => { console.log('[InterviewRoom] state:stream =', stream); }, [stream]);
+  useEffect(() => { console.log('[InterviewRoom] state:error =', error); }, [error]);
+  useEffect(() => { console.log('[InterviewRoom] state:sttAvailable =', sttAvailable); }, [sttAvailable]);
+
   // Load session if not in store
   useEffect(() => {
     if (!session && token) {
@@ -162,6 +171,18 @@ export default function InterviewRoom() {
   }
 
   async function startRecording() {
+    console.log('[InterviewRoom] mic button clicked — explicitly checking microphone permission');
+    try {
+      const permissionCheck = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log('[InterviewRoom] microphone permission check passed');
+      permissionCheck.getTracks().forEach((t) => t.stop());
+    } catch (err: any) {
+      const detail = `${err?.name ?? 'Error'}: ${err?.message ?? 'Unknown error'}`;
+      console.error('[InterviewRoom] microphone permission check failed:', detail, err);
+      setError(`Microphone access denied — ${detail}`);
+      return;
+    }
+
     console.log('[InterviewRoom] startRecording called, stream =', stream);
     if (!stream) {
       console.warn('[InterviewRoom] no media stream available — cannot start recording');
