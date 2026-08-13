@@ -3,9 +3,10 @@ import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { env } from '../config/env';
 
+// Reserved for future Whisper STT — every text-generation function below runs on Anthropic.
 const openai = new OpenAI({ apiKey: env.openaiApiKey });
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const MODEL = env.openaiModel;
+const CLAUDE_MODEL = 'claude-sonnet-4-6';
 
 // ─── Generate Job Description ─────────────────────────────────────────────────
 
@@ -24,22 +25,29 @@ ${params.skills?.length ? `Key skills: ${params.skills.join(', ')}` : ''}
 Format with: Overview, Responsibilities, Requirements, Nice to Have, About Company (generic placeholder).
 Be concise and compelling. Use markdown formatting.`;
 
-  const res = await openai.chat.completions.create({
-    model: MODEL,
-    messages: [{ role: 'user', content: prompt }],
-    temperature: 0.7,
-    max_tokens: 1000,
-  });
-
-  return res.choices[0].message.content ?? '';
+  try {
+    const res = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 1000,
+      temperature: 0.7,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const text = res.content[0].type === 'text' ? res.content[0].text : '';
+    return text.replace(/```markdown|```/g, '').trim();
+  } catch (err) {
+    console.error('[ai.service] generateJobDescription failed:', err);
+    return `## ${params.title}\n\nWe are hiring for the role of ${params.title}${params.department ? ` in ${params.department}` : ''}. Please contact HR for the full job description.`;
+  }
 }
 
 // ─── Parse Skills from JD ─────────────────────────────────────────────────────
 
 export async function parseSkillsFromJD(jobDescription: string): Promise<string[]> {
   try {
-    const res = await openai.chat.completions.create({
-      model: MODEL,
+    const res = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 300,
+      temperature: 0,
       messages: [
         {
           role: 'user',
@@ -51,11 +59,9 @@ ${jobDescription}
 Example output: ["React", "Node.js", "Communication", "Problem Solving"]`,
         },
       ],
-      temperature: 0,
-      max_tokens: 300,
     });
 
-    const content = res.choices[0].message.content ?? '[]';
+    const content = res.content[0].type === 'text' ? res.content[0].text : '[]';
     const cleaned = content.replace(/```json|```/g, '').trim();
     return JSON.parse(cleaned);
   } catch (err) {
@@ -103,18 +109,18 @@ Guidelines:
 - Make questions specific to the role and skills
 - Avoid yes/no questions`;
 
-  const res = await openai.chat.completions.create({
-    model: MODEL,
-    messages: [{ role: 'user', content: prompt }],
-    temperature: 0.6,
-    max_tokens: 2000,
-  });
-
-  const content = res.choices[0].message.content ?? '[]';
   try {
+    const res = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 2000,
+      temperature: 0.6,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const content = res.content[0].type === 'text' ? res.content[0].text : '[]';
     const cleaned = content.replace(/```json|```/g, '').trim();
     return JSON.parse(cleaned);
-  } catch {
+  } catch (err) {
+    console.error('[ai.service] generateInterviewQuestions failed, falling back to []:', err);
     return [];
   }
 }
@@ -152,18 +158,18 @@ Scoring rubric:
 - 30-49: Weak answer, off-topic, or very generic
 - 0-29: No answer, incoherent, or completely irrelevant`;
 
-  const res = await openai.chat.completions.create({
-    model: MODEL,
-    messages: [{ role: 'user', content: prompt }],
-    temperature: 0,
-    max_tokens: 300,
-  });
-
-  const content = res.choices[0].message.content ?? '{"score":0,"feedback":"Could not evaluate"}';
   try {
+    const res = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 300,
+      temperature: 0,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const content = res.content[0].type === 'text' ? res.content[0].text : '{"score":0,"feedback":"Could not evaluate"}';
     const cleaned = content.replace(/```json|```/g, '').trim();
     return JSON.parse(cleaned);
-  } catch {
+  } catch (err) {
+    console.error('[ai.service] evaluateResponse failed:', err);
     return { score: 0, feedback: 'Evaluation error' };
   }
 }
@@ -216,18 +222,18 @@ Guidelines:
 - Be specific and fair in strengths/weaknesses
 - Score each skill from the skills list based on evidence`;
 
-  const res = await openai.chat.completions.create({
-    model: MODEL,
-    messages: [{ role: 'user', content: prompt }],
-    temperature: 0.3,
-    max_tokens: 800,
-  });
-
-  const content = res.choices[0].message.content ?? '{}';
   try {
+    const res = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 800,
+      temperature: 0.3,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const content = res.content[0].type === 'text' ? res.content[0].text : '{}';
     const cleaned = content.replace(/```json|```/g, '').trim();
     return JSON.parse(cleaned);
-  } catch {
+  } catch (err) {
+    console.error('[ai.service] generateReport failed:', err);
     return {
       overallScore: avgScore,
       recommendation: avgScore >= 70 ? 'HIRE' : 'REJECT',
@@ -295,7 +301,7 @@ If no bias is detected, return: { "score": 100, "flags": [] }`;
 
   try {
     const res = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: CLAUDE_MODEL,
       max_tokens: 1000,
       temperature: 0,
       messages: [{ role: 'user', content: prompt }],
@@ -351,7 +357,7 @@ Return ONLY the HTML content, no markdown, no explanation.`;
 
   try {
     const res = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: CLAUDE_MODEL,
       max_tokens: 1500,
       temperature: 0.3,
       messages: [{ role: 'user', content: prompt }],
