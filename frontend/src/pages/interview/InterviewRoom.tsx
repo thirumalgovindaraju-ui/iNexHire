@@ -4,6 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Mic, MicOff, SkipForward, ChevronRight, Clock, CheckCircle } from 'lucide-react';
 import { interviewsApi, extractError } from '../../services/api';
 import { useInterviewStore } from '../../store/interviewStore';
+import { useProctoring } from '../../hooks/useProctoring';
 import { Button, Spinner } from '../../components/ui';
 import clsx from 'clsx';
 
@@ -60,6 +61,13 @@ export default function InterviewRoom() {
   const recognition = useRef<any>(null);
   const recognitionShouldRun = useRef(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const audioMonitorCleanup = useRef<(() => void) | null>(null);
+  const questionStartTime = useRef(Date.now());
+
+  const proctoring = useProctoring({
+    interviewId: session?.interviewId ?? '',
+    enabled: Boolean(session),
+  });
 
   // Trace every state change for debugging the recording flow on the live site
   useEffect(() => { console.log('[InterviewRoom] state:isRecording =', isRecording); }, [isRecording]);
@@ -87,37 +95,34 @@ export default function InterviewRoom() {
     }
   }, []);
 
-  // Get camera stream
+  // Get camera stream — video only. Audio is requested separately and on-demand by
+  // startRecording(), so this stream never needs (and never gets) a microphone track.
   useEffect(() => {
-    console.log('[InterviewRoom] requesting camera + microphone access');
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((s) => {
-      console.log('[InterviewRoom] camera + mic stream acquired:', s.getTracks().map((t) => t.kind));
+    console.log('[InterviewRoom] requesting camera access (video only)');
+    navigator.mediaDevices.getUserMedia({ video: true, audio: false }).then((s) => {
+      console.log('[InterviewRoom] camera stream acquired:', s.getTracks().map((t) => `${t.kind}:${t.readyState}`));
       setStream(s);
-      if (videoRef.current) videoRef.current.srcObject = s;
     }).catch((err) => {
-      console.warn('[InterviewRoom] camera+mic getUserMedia failed, retrying audio-only:', err);
-      navigator.mediaDevices.getUserMedia({ audio: true }).then((s) => {
-        console.log('[InterviewRoom] audio-only stream acquired:', s.getTracks().map((t) => t.kind));
-        setStream(s);
-      }).catch((err2) => {
-        console.error('[InterviewRoom] microphone access failed:', err2);
-        setError('Microphone access is required for this interview. Please allow microphone access in your browser and reload the page.');
-      });
+      console.error('[InterviewRoom] camera access failed — proceeding without video preview:', err);
     });
     return () => stream?.getTracks().forEach((t) => t.stop());
   }, []);
 
-  // Proctoring — tab visibility
+  // Assign the stream to the <video> element once it's mounted. Doing this inside the
+  // getUserMedia .then() above races the element's mount: the <video> only renders once
+  // `stream` state is set, so `videoRef.current` is still null at that point in time.
   useEffect(() => {
-    if (!session) return;
-    const handler = () => {
-      if (document.hidden) {
-        interviewsApi.logProctorEvent(session.interviewId, 'TAB_SWITCH');
-      }
-    };
-    document.addEventListener('visibilitychange', handler);
-    return () => document.removeEventListener('visibilitychange', handler);
-  }, [session]);
+    if (!stream || !videoRef.current) return;
+    console.log('[InterviewRoom] assigning camera stream to video element');
+    videoRef.current.srcObject = stream;
+    proctoring.startFaceMonitoring(videoRef.current);
+    return () => proctoring.stopFaceMonitoring();
+  }, [stream]);
+
+  // Reset the "time to start answering" clock whenever a new question is shown
+  useEffect(() => {
+    questionStartTime.current = Date.now();
+  }, [currentQuestionIndex]);
 
   // Speech recognition (STT) — the browser's Web Speech API is the only transcription
   // path (recorded audio is never uploaded), so a failure here means the candidate has
@@ -232,6 +237,10 @@ export default function InterviewRoom() {
     setTranscript('');
     setError('');
     startRecognition();
+
+    console.log('[InterviewRoom] starting proctoring audio monitoring + response-timing check');
+    audioMonitorCleanup.current = proctoring.startAudioMonitoring(micStream);
+    proctoring.trackResponseTiming(questionStartTime.current);
   }
 
   async function stopRecording(): Promise<Blob> {
@@ -246,6 +255,8 @@ export default function InterviewRoom() {
         console.log('[InterviewRoom] MediaRecorder stopped, blob size =', blob.size);
         recordingStream.current?.getTracks().forEach((t) => t.stop());
         recordingStream.current = null;
+        audioMonitorCleanup.current?.();
+        audioMonitorCleanup.current = null;
         resolve(blob);
       };
       mediaRecorder.current.stop();
@@ -331,7 +342,14 @@ export default function InterviewRoom() {
           {/* Video preview */}
           <div className="rounded-xl overflow-hidden bg-black aspect-video lg:aspect-auto lg:h-44">
             {stream ? (
-              <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
+              <video
+                ref={videoRef}
+                autoPlay
+                muted
+                playsInline
+                className="w-full h-full object-cover"
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
             ) : (
               <div className="w-full h-full flex items-center justify-center">
                 <span className="text-surface-500 text-xs">No camera</span>
