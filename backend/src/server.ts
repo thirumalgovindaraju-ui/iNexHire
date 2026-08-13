@@ -10,9 +10,9 @@ async function main() {
   await prisma.$connect();
   console.log('[DB] PostgreSQL connected');
 
-  // Test Redis connection — required in production, optional in development.
-  // ioredis retries forever by default, so give it a bounded window here rather
-  // than letting a missing Redis hang server startup indefinitely.
+  // Test Redis connection — optional in every environment. ioredis retries
+  // forever by default, so give it a bounded window here rather than letting
+  // a missing Redis hang server startup indefinitely.
   let redisAvailable = true;
   try {
     await Promise.race([
@@ -20,11 +20,10 @@ async function main() {
       new Promise((_, reject) => setTimeout(() => reject(new Error('Redis ping timed out')), 3000)),
     ]);
     console.log('[Redis] Connected');
-  } catch (err) {
-    if (env.isProd) throw err;
+  } catch {
     redisAvailable = false;
     redis.disconnect();
-    console.warn('[Redis] Not reachable — continuing without it in development. BullMQ evaluation queue is disabled until Redis is available.');
+    console.warn('[Redis] Not reachable — continuing without it. BullMQ evaluation queue is disabled until Redis is available.');
   }
 
   // Start BullMQ worker only if Redis is actually available
