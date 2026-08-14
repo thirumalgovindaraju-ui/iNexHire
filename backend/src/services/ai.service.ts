@@ -935,3 +935,120 @@ AI coaching score guide:
     };
   }
 }
+
+// ─── Simulated EPFO Employment History ────────────────────────────────────────
+// SIMULATION ONLY. There is no real EPFO API integration in this app (that
+// requires government approval from the Ministry of Labour). This function
+// fabricates a plausible, entirely fictional employment history purely to
+// prototype the verification UI — it is never a query against a real UAN or
+// real government record, and the caller must always label it as simulated.
+
+export interface SimulatedEmploymentRecord {
+  employer: string;
+  startDate: string;      // "YYYY-MM"
+  endDate: string | null; // "YYYY-MM", null = ongoing
+  epfoOffice: string;
+}
+
+export async function generateSimulatedEmploymentHistory(params: {
+  candidateName: string;
+  roleAppliedFor: string;
+}): Promise<SimulatedEmploymentRecord[]> {
+  const prompt = `You are generating a FICTIONAL, SIMULATED dataset for a software prototype only.
+This is NOT a real government record, NOT sourced from any real EPFO/UAN lookup, and must never be
+described as authentic. It exists only to populate a demo UI for an employment-verification feature
+that has no real backend integration.
+
+Generate a plausible but entirely fictional Indian employment history, structured as if it came from
+an EPFO UAN passbook, for a demo candidate profile. Do not attempt to reflect any real person's actual
+work history — invent generic, unremarkable company names and offices.
+
+Demo candidate name: ${params.candidateName}
+Role being considered for: ${params.roleAppliedFor}
+
+Generate 1-3 employment entries spanning a plausible total career length (1-8 years), using:
+- employer: a generic, plausible-sounding Indian company name (invented, not a real specific company)
+- startDate / endDate: "YYYY-MM" format; endDate should be null only for the most recent entry if it
+  represents an ongoing job
+- epfoOffice: a plausible EPFO regional/sub-regional office name, e.g. "EPFO Bengaluru Sub-Regional Office"
+
+Return ONLY valid JSON array, no other text:
+[
+  { "employer": "...", "startDate": "2019-06", "endDate": "2021-08", "epfoOffice": "..." }
+]`;
+
+  try {
+    const res = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 800,
+      temperature: 0.4,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const content = res.content[0].type === 'text' ? res.content[0].text : '[]';
+    const cleaned = content.replace(/```json|```/g, '').trim();
+    return JSON.parse(cleaned) as SimulatedEmploymentRecord[];
+  } catch (err) {
+    console.error('[ai.service] generateSimulatedEmploymentHistory failed:', err);
+    return [];
+  }
+}
+
+// ─── Simulated LinkedIn Applicants ─────────────────────────────────────────────
+// SIMULATION ONLY. There is no real LinkedIn Talent Solutions API integration
+// in this app (that requires LinkedIn partner approval). This fabricates
+// plausible, entirely fictional applicant profiles purely to prototype the
+// "import candidates who applied via LinkedIn" UI — never a real API response.
+
+export interface SimulatedApplicant {
+  name: string;
+  headline: string;
+  currentRole: string;
+  experienceYears: number;
+  location: string;
+  skills: string[];
+}
+
+export async function generateSimulatedLinkedInApplicants(params: {
+  jobTitle: string;
+  skills: string[];
+  count: number;
+}): Promise<SimulatedApplicant[]> {
+  const prompt = `You are generating a FICTIONAL, SIMULATED dataset for a software prototype only.
+This is NOT real LinkedIn data and must never be described as authentic. It exists only to populate
+a demo UI for a "candidates who applied via LinkedIn" feature that has no real LinkedIn API integration.
+
+Generate ${params.count} plausible but entirely fictional Indian job-seeker profiles who might have
+applied for this role. Invent generic names and headlines — do not reference any real, identifiable
+person.
+
+Job title: ${params.jobTitle}
+Key skills for the role: ${params.skills.join(', ')}
+
+For each fictional applicant, generate:
+- name: a plausible Indian full name (invented)
+- headline: a short LinkedIn-style headline, e.g. "Senior Backend Engineer at [fictional company]"
+- currentRole: their current job title
+- experienceYears: total years of experience (integer)
+- location: an Indian city
+- skills: 4-6 skills relevant to the role, mixing exact matches and adjacent skills
+
+Return ONLY valid JSON array, no other text:
+[
+  { "name": "...", "headline": "...", "currentRole": "...", "experienceYears": 5, "location": "Bengaluru", "skills": ["..."] }
+]`;
+
+  try {
+    const res = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 1200,
+      temperature: 0.6,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const content = res.content[0].type === 'text' ? res.content[0].text : '[]';
+    const cleaned = content.replace(/```json|```/g, '').trim();
+    return JSON.parse(cleaned) as SimulatedApplicant[];
+  } catch (err) {
+    console.error('[ai.service] generateSimulatedLinkedInApplicants failed:', err);
+    return [];
+  }
+}
