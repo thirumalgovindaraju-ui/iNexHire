@@ -8,6 +8,48 @@ import { useProctoring } from '../../hooks/useProctoring';
 import { Button, Spinner } from '../../components/ui';
 import clsx from 'clsx';
 
+// ─── Pending response fallback ─────────────────────────────────────────────────
+// If submitResponse times out (e.g. Render's free tier waking a sleeping backend),
+// the candidate's answer is stashed here instead of being lost, and synced later.
+
+interface PendingResponse {
+  questionId: string;
+  transcript?: string;
+  savedAt: string;
+}
+
+function pendingResponsesKey(interviewId: string) {
+  return `nexhire-pending-response-${interviewId}`;
+}
+
+function loadPendingResponses(interviewId: string): PendingResponse[] {
+  try {
+    const raw = localStorage.getItem(pendingResponsesKey(interviewId));
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function addPendingResponse(interviewId: string, questionId: string, transcript?: string) {
+  const items = loadPendingResponses(interviewId).filter((i) => i.questionId !== questionId);
+  items.push({ questionId, transcript, savedAt: new Date().toISOString() });
+  try {
+    localStorage.setItem(pendingResponsesKey(interviewId), JSON.stringify(items));
+  } catch (err) {
+    console.error('[InterviewRoom] failed to save pending response locally:', err);
+  }
+}
+
+function removePendingResponse(interviewId: string, questionId: string) {
+  const items = loadPendingResponses(interviewId).filter((i) => i.questionId !== questionId);
+  try {
+    localStorage.setItem(pendingResponsesKey(interviewId), JSON.stringify(items));
+  } catch {
+    // Non-fatal — worst case we retry an already-synced response next flush.
+  }
+}
+
 // ─── Timer ────────────────────────────────────────────────────────────────────
 
 function Timer({ seconds, onExpire }: { seconds: number; onExpire: () => void }) {
@@ -94,6 +136,30 @@ export default function InterviewRoom() {
       });
     }
   }, []);
+
+  // Best-effort sync of any answers that were saved locally after a previous
+  // submitResponse timeout (e.g. a Render cold start, or the tab being reloaded
+  // before the retry could happen).
+  useEffect(() => {
+    if (!session) return;
+    const pending = loadPendingResponses(session.interviewId);
+    if (pending.length === 0) return;
+    console.log('[InterviewRoom] found', pending.length, 'locally-saved response(s), attempting to sync');
+    (async () => {
+      for (const item of pending) {
+        try {
+          await interviewsApi.submitResponse(session.interviewId, {
+            questionId: item.questionId,
+            transcript: item.transcript,
+          });
+          removePendingResponse(session.interviewId, item.questionId);
+          console.log('[InterviewRoom] synced locally-saved response for question', item.questionId);
+        } catch (err) {
+          console.warn('[InterviewRoom] still unable to sync locally-saved response for question', item.questionId, err);
+        }
+      }
+    })();
+  }, [session?.interviewId]);
 
   // Get camera stream — video only. Audio is requested separately and on-demand by
   // startRecording(), so this stream never needs (and never gets) a microphone track.
@@ -265,6 +331,17 @@ export default function InterviewRoom() {
     });
   }
 
+  async function advanceAfterSubmit(questionId: string) {
+    markSubmitted(questionId);
+    setTranscript('');
+    const nextIndex = currentQuestionIndex + 1;
+    if (session && nextIndex < session.questions.length) {
+      setCurrentQuestion(nextIndex);
+    } else {
+      await handleComplete();
+    }
+  }
+
   const handleSubmitAnswer = useCallback(async (skip = false) => {
     const q = currentQuestion();
     if (!q || !session) return;
@@ -274,20 +351,24 @@ export default function InterviewRoom() {
     try {
       if (isRecording) await stopRecording();
 
-      await interviewsApi.submitResponse(session.interviewId, {
-        questionId: q.id,
-        transcript: skip ? undefined : transcript || undefined,
-      });
+      const answerTranscript = skip ? undefined : transcript || undefined;
 
-      markSubmitted(q.id);
-      setTranscript('');
+      try {
+        console.log('[InterviewRoom] submitting response for question', q.id);
+        await interviewsApi.submitResponse(session.interviewId, {
+          questionId: q.id,
+          transcript: answerTranscript,
+        });
+        console.log('[InterviewRoom] response submitted successfully');
+        await advanceAfterSubmit(q.id);
+      } catch (err: any) {
+        const isTimeout = err?.code === 'ECONNABORTED' || /timeout/i.test(err?.message ?? '');
+        if (!isTimeout) throw err;
 
-      // Move to next or complete
-      const nextIndex = currentQuestionIndex + 1;
-      if (nextIndex < session.questions.length) {
-        setCurrentQuestion(nextIndex);
-      } else {
-        await handleComplete();
+        console.warn('[InterviewRoom] submitResponse timed out — saving answer locally instead of losing it:', err);
+        addPendingResponse(session.interviewId, q.id, answerTranscript);
+        setError("Your answer couldn't reach the server in time, so it was saved on this device and will sync automatically. Continuing...");
+        await advanceAfterSubmit(q.id);
       }
     } catch (err) {
       setError(extractError(err));
@@ -434,6 +515,13 @@ export default function InterviewRoom() {
                   </div>
                 )}
               </div>
+
+              {submitting && (
+                <div className="mb-4 p-3 bg-surface-800 border border-surface-700 rounded-lg text-sm text-surface-300 flex items-center gap-2">
+                  <Spinner size={14} />
+                  Processing your answer... this can take a little longer if the server just woke up.
+                </div>
+              )}
 
               {error && (
                 <div className="mb-4 p-3 bg-red-900/30 border border-red-700 rounded-lg text-sm text-red-300">

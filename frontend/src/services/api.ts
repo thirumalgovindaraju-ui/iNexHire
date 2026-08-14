@@ -154,7 +154,9 @@ export const interviewsApi = {
     audioUrl?: string;
     duration?: number;
   }) => {
-    const res = await apiClient.post(`/interviews/${interviewId}/respond`, data);
+    // Render's free tier spins the backend down when idle, so the first request after
+    // a period of inactivity can take well over the default 30s timeout to wake it up.
+    const res = await apiClient.post(`/interviews/${interviewId}/respond`, data, { timeout: 120000 });
     return res.data;
   },
   logProctorEvent: async (interviewId: string, eventType: string, metadata?: any) => {
