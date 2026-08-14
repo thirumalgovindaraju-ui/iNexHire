@@ -269,6 +269,10 @@ export async function scanBias(
       : 'interview questions';
 
   const prompt = `You are an expert in inclusive hiring practices and employment law compliance.
+Your primary jurisdiction is INDIA. Treat UK/US employment law as secondary reference
+points, relevant only for roles serving multinational clients — India-specific violations
+should be weighted at least as heavily as general/Western ones, and never overlooked in
+favour of them.
 Analyse this ${context} for language that could deter qualified candidates from underrepresented groups or create legal liability.
 
 ${context.toUpperCase()}:
@@ -276,13 +280,29 @@ ${context.toUpperCase()}:
 ${text.slice(0, 3000)}
 """
 
-Check for:
+Check for general/Western signals:
 - Gender-coded language (e.g. "rockstar", "ninja", "aggressive", "dominate")
 - Age bias (e.g. "recent graduate", "digital native", "young and energetic")
 - Exclusionary culture language (e.g. "culture fit", "fraternity", "brotherhood")
 - Credential inflation (e.g. "degree required" when experience would suffice)
 - Disability-exclusionary language
-- Any language that could violate equal opportunity employment law
+- Any language that could violate UK/US equal opportunity employment law (secondary reference, for MNC clients)
+
+Check for India-specific legal signals (primary jurisdiction):
+- Persons with Disabilities Act 2016 (RPwD Act) — disability-exclusionary language
+- Equal Remuneration Act 1976 — gender-based pay discrimination signals
+- Maternity Benefit Act 1961 — language that may deter women of childbearing age (e.g. implying continuous availability, no career breaks)
+- Sexual Harassment of Women at Workplace Act 2013 (POSH) — hostile work environment signals
+- SC/ST (Prevention of Atrocities) Act — caste-discriminatory language or coded caste/community references
+- Indian Contract Labour Act — exploitative language signals (e.g. no benefits implied, informal/contract-only framing where a regular role is expected)
+- Shops and Establishments Act — unreasonable working hours language (e.g. "willing to work long hours", undefined overtime expectations)
+
+Check for these specific India/iOPEX red flags:
+- "Only male candidates" / "Only female candidates" or similar gender-restrictive phrasing — illegal in India
+- Caste, religion, or community references, coded or explicit — illegal
+- Age limits beyond what's reasonable given India's standard retirement age of 58-60
+- "Hindi speaking only" required in a non-Hindi-speaking state — potential linguistic/regional discrimination
+- "Local candidates only" — may violate equal opportunity principles
 
 Return ONLY valid JSON (no markdown, no other text):
 {
