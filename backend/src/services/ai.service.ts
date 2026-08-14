@@ -368,3 +368,174 @@ Return ONLY the HTML content, no markdown, no explanation.`;
     return `<p>Dear ${params.candidateName},</p><p>We are pleased to offer you the position of ${params.jobTitle} at ${params.companyName}.</p><p>Please contact HR for full details.</p>`;
   }
 }
+
+// ─── Analyse Proctoring Data ─────────────────────────────────────────────────
+
+export interface ProctoringFlag {
+  type: string;
+  timestamp: string;
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  description: string;
+  evidence?: string;
+}
+
+export interface ProctoringAnalysisResult {
+  riskScore: number;       // 0-100
+  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  flags: ProctoringFlag[];
+  aiAnalysis: string;
+  recommendation: 'CLEAN' | 'REVIEW' | 'ESCALATE' | 'VOID';
+  aiCoachingScore: number; // 0-100 confidence that responses were AI-generated/coached
+}
+
+export async function analyseProctoringData(params: {
+  events: Array<{ eventType: string; timestamp: string; metadata?: any }>;
+  transcripts: string[];
+  jobTitle: string;
+  durationMinutes: number;
+}): Promise<ProctoringAnalysisResult> {
+  const { events, transcripts, jobTitle, durationMinutes } = params;
+
+  // Summarise events for the prompt
+  const eventSummary = events.reduce((acc, e) => {
+    acc[e.eventType] = (acc[e.eventType] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  const fullTranscript = transcripts.join('\n\n');
+
+  const prompt = `You are an expert in interview integrity assessment and cheating detection.
+Analyse this interview session for signs of malpractice, cheating, or integrity violations.
+
+JOB ROLE: ${jobTitle}
+INTERVIEW DURATION: ${durationMinutes} minutes
+TOTAL EVENTS LOGGED: ${events.length}
+
+BEHAVIOURAL EVENTS DETECTED:
+${JSON.stringify(eventSummary, null, 2)}
+
+RAW EVENT TIMELINE (last 20):
+${events.slice(-20).map(e => `[${e.timestamp}] ${e.eventType}${e.metadata ? ': ' + JSON.stringify(e.metadata) : ''}`).join('\n')}
+
+INTERVIEW TRANSCRIPTS:
+"""
+${fullTranscript.slice(0, 3000)}
+"""
+
+Analyse for these malpractice indicators:
+
+1. TECHNICAL CHEATING:
+   - Tab switching patterns (frequent = looking up answers)
+   - Copy-paste events (pre-prepared answers)
+   - Multiple faces detected (someone else helping)
+   - Phone detected in frame
+   - Reading from screen (eyes not on camera)
+
+2. RESPONSE QUALITY ANOMALIES:
+   - Responses too perfect/polished for spoken interview (AI-generated)
+   - Identical phrasing patterns across answers (pre-scripted)
+   - Suspicious pauses before answering (looking up)
+   - Background voices audible (coaching)
+   - Lip sync mismatch (pre-recorded response playback)
+
+3. IDENTITY CONCERNS:
+   - Face not detected for extended periods
+   - Multiple different faces across session
+   - Significant appearance changes mid-interview
+
+4. STATISTICAL ANOMALIES:
+   - Response times that are unnaturally consistent
+   - Answer quality dramatically higher than conversational quality
+   - No filler words, hesitations, or natural speech patterns
+
+5. AI COACHING / LIVE AI ASSISTANCE DETECTION — analyse the transcript text closely:
+   - Unnaturally complete and structured phrasing for a *spoken* answer (spoken answers
+     ramble, self-correct, and trail off; written/read answers don't)
+   - Perfect bullet-point or numbered-list structure appearing in spoken text — people
+     don't speak in bullet points
+   - Zero filler words (um, uh, like, you know, so, I mean) across ALL responses —
+     statistically near-impossible in unscripted natural speech
+   - Vocabulary or sentence complexity that jumps sharply partway through a single
+     answer (suggests switching from thinking aloud to reading a generated response)
+   - Candidate repeats the question back verbatim before answering, repeatedly — a
+     stalling tactic to buy time for an AI tool to generate a response
+   - Generic, textbook-perfect answers with no personal anecdotes, specific project
+     names, or first-hand detail, especially on behavioural questions that should
+     surface a real example
+
+6. SCREEN-READING BEHAVIOURAL PATTERNS — infer from LOOKING_AWAY / FACE_NOT_DETECTED /
+   SUSPICIOUS_PAUSE event metadata and timestamps relative to response timing:
+   - Gaze consistently shifted in the same direction across multiple events (e.g.
+     repeatedly down-left or down-right) rather than varying naturally — suggests a
+     fixed second screen or phone rather than incidental glances
+   - Recurring head-tilt-down patterns aligned with a reading posture
+   - A repeated pattern of a long pause (10-15s) immediately before an answer begins,
+     followed by unusually fluent, uninterrupted delivery — consistent with reading a
+     pre-generated answer off-screen rather than thinking and speaking naturally
+   - Brief mid-sentence micro-pauses recurring at a similar cadence (consistent with
+     scrolling or eye movement to the next line of on-screen text)
+
+Rate each flag's severity and provide an overall assessment, including a distinct
+confidence score for AI coaching specifically (separate from the general risk score,
+since a candidate can have a clean risk score but still show strong AI-coaching signals
+in the transcript alone).
+
+Return ONLY valid JSON:
+{
+  "riskScore": <0-100, where 0=clean, 100=definite cheating>,
+  "riskLevel": <"LOW"|"MEDIUM"|"HIGH"|"CRITICAL">,
+  "flags": [
+    {
+      "type": "<flag category>",
+      "timestamp": "<ISO timestamp or 'throughout'>",
+      "severity": "<critical|high|medium|low>",
+      "description": "<specific observation>",
+      "evidence": "<what triggered this flag>"
+    }
+  ],
+  "aiAnalysis": "<2-3 paragraph narrative assessment of integrity>",
+  "recommendation": <"CLEAN"|"REVIEW"|"ESCALATE"|"VOID">,
+  "aiCoachingScore": <0-100, confidence that responses were AI-generated or live-coached>
+}
+
+Risk score guide:
+0-20: CLEAN — normal interview behaviour
+21-40: LOW — minor anomalies, likely benign
+41-60: MEDIUM — suspicious patterns, human review recommended
+61-80: HIGH — strong indicators of assistance or cheating
+81-100: CRITICAL — clear evidence, consider voiding interview
+
+AI coaching score guide:
+0-20: No indication of AI assistance — natural, imperfect spoken language
+21-40: A few isolated polished phrases, likely benign
+41-60: Multiple answers show structured/scripted phrasing, worth a human review
+61-80: Consistent pattern across most answers — very likely AI-assisted
+81-100: Near-certain — transcript reads as generated text, not speech`;
+
+  try {
+    const res = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 2000,
+      temperature: 0,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const text = res.content[0].type === 'text' ? res.content[0].text : '{}';
+    const parsed = JSON.parse(text.replace(/```json|```/g, '').trim()) as ProctoringAnalysisResult;
+    return {
+      riskScore: Math.max(0, Math.min(100, parsed.riskScore ?? 0)),
+      riskLevel: parsed.riskLevel ?? 'LOW',
+      flags: parsed.flags ?? [],
+      aiAnalysis: parsed.aiAnalysis ?? 'Analysis unavailable.',
+      recommendation: parsed.recommendation ?? 'REVIEW',
+      aiCoachingScore: Math.max(0, Math.min(100, parsed.aiCoachingScore ?? 0)),
+    };
+  } catch (err) {
+    console.error('[ai.service] analyseProctoringData failed:', err);
+    return {
+      riskScore: 0, riskLevel: 'LOW', flags: [],
+      aiAnalysis: 'Proctoring analysis unavailable.',
+      recommendation: 'REVIEW',
+      aiCoachingScore: 0,
+    };
+  }
+}
