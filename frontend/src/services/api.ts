@@ -108,6 +108,74 @@ export const openingsApi = {
     const res = await apiClient.post(`/openings/${id}/generate-questions`, params);
     return res.data;
   },
+  fromTemplate: async (templateId: string) => {
+    const res = await apiClient.post(`/openings/from-template/${templateId}`);
+    return res.data;
+  },
+};
+
+// ─── EPFO/UAN Employment Verification (simulation only) ────────────────────────
+
+export const epfoApi = {
+  verify: async (data: {
+    candidateId: string;
+    uanNumber: string;
+    statedExperienceYears?: number;
+    statedEmployers?: string[];
+  }) => {
+    const res = await apiClient.post('/epfo/verify', data);
+    return res.data;
+  },
+  get: async (candidateId: string) => {
+    const res = await apiClient.get(`/epfo/${candidateId}`);
+    return res.data;
+  },
+};
+
+// ─── Job Templates ─────────────────────────────────────────────────────────────
+
+export const templatesApi = {
+  list: async (params?: { sector?: string; level?: string }) => {
+    const res = await apiClient.get('/templates', { params });
+    return res.data.templates;
+  },
+  get: async (id: string) => {
+    const res = await apiClient.get(`/templates/${id}`);
+    return res.data.template;
+  },
+};
+
+// ─── LinkedIn Integration (simulation only) ────────────────────────────────────
+
+export const linkedinApi = {
+  status: async () => {
+    const res = await apiClient.get('/integrations/linkedin/status');
+    return res.data;
+  },
+  auth: async () => {
+    const res = await apiClient.get('/integrations/linkedin/auth');
+    return res.data;
+  },
+  callback: async () => {
+    const res = await apiClient.get('/integrations/linkedin/callback');
+    return res.data;
+  },
+  invite: async (data: { profileUrl: string; email: string; openingId: string; name?: string }) => {
+    const res = await apiClient.post('/integrations/linkedin/invite', data);
+    return res.data;
+  },
+  jobPost: async (openingId: string) => {
+    const res = await apiClient.post(`/integrations/linkedin/job-post/${openingId}`);
+    return res.data;
+  },
+  applicants: async (openingId: string) => {
+    const res = await apiClient.get(`/integrations/linkedin/applicants/${openingId}`);
+    return res.data;
+  },
+  importApplicant: async (data: { openingId: string; applicant: { name: string; profileUrl: string } }) => {
+    const res = await apiClient.post('/integrations/linkedin/applicants/import', data);
+    return res.data;
+  },
 };
 
 // ─── Candidates ───────────────────────────────────────────────────────────────

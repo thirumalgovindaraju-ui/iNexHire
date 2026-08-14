@@ -1,6 +1,6 @@
 // src/layouts/DashboardLayout.tsx — NexHire v3 Final
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Briefcase, Users, BarChart2, LogOut, Bell, Search, Shield, FileText, Zap, Clock, Settings, Database, GitBranch, Brain, Heart, Trophy, ClipboardList, Palette, MessageSquare, Play, Globe, AlertTriangle, UserCog, MessageCircle, TrendingUp, Key } from 'lucide-react';
+import { LayoutDashboard, Briefcase, Users, BarChart2, LogOut, Bell, Search, Shield, FileText, Zap, Clock, Settings, Database, GitBranch, Brain, Heart, Trophy, ClipboardList, Palette, MessageSquare, Play, Globe, AlertTriangle, UserCog, MessageCircle, TrendingUp, Key, LayoutTemplate, ShieldCheck } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { authApi } from '../services/api';
 import { useState } from 'react';
@@ -9,6 +9,7 @@ const NAV = [
   { section: 'Workspace', items: [
     { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/openings', icon: Briefcase, label: 'Job Openings' },
+    { to: '/templates', icon: LayoutTemplate, label: 'Job Templates', badge: 'NEW' },
     { to: '/candidates', icon: Users, label: 'Candidates' },
     { to: '/pipeline', icon: GitBranch, label: 'Pipeline Board' },
     { to: '/analytics', icon: BarChart2, label: 'Analytics' },
@@ -26,6 +27,7 @@ const NAV = [
   ]},
   { section: 'Enterprise', items: [
     { to: '/compliance', icon: Shield, label: 'Compliance & Bias', badge: '1' },
+    { to: '/epfo-verification', icon: ShieldCheck, label: 'EPFO Verification', badge: 'SIM' },
     { to: '/offers', icon: FileText, label: 'Offer Letters' },
     { to: '/talent-pool', icon: Database, label: 'Talent Pool' },
     { to: '/languages', icon: Globe, label: 'Multilingual' },

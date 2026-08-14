@@ -1,12 +1,42 @@
 // src/seed.ts
 // Run: npx tsx src/seed.ts
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { JOB_TEMPLATES } from './data/jobTemplates.data';
 
 const prisma = new PrismaClient();
 
 async function main() {
   console.log('🌱 Seeding database...');
+
+  // Seed India job role templates (idempotent — upsert by title+level).
+  // Runs first, before the demo org/opening/interview data below, so it
+  // succeeds independently of that block's state (deleteMany there can fail
+  // once real interview responses exist referencing seed-opening-001's questions).
+  for (const t of JOB_TEMPLATES) {
+    await prisma.jobTemplate.upsert({
+      where: { title_level: { title: t.title, level: t.level } },
+      update: {
+        sector: t.sector,
+        skills: t.skills as unknown as Prisma.InputJsonValue,
+        jobDescription: t.jobDescription,
+        sampleQuestions: t.sampleQuestions as unknown as Prisma.InputJsonValue,
+        salaryMinLakhs: t.salaryMinLakhs,
+        salaryMaxLakhs: t.salaryMaxLakhs,
+      },
+      create: {
+        title: t.title,
+        sector: t.sector,
+        level: t.level,
+        skills: t.skills as unknown as Prisma.InputJsonValue,
+        jobDescription: t.jobDescription,
+        sampleQuestions: t.sampleQuestions as unknown as Prisma.InputJsonValue,
+        salaryMinLakhs: t.salaryMinLakhs,
+        salaryMaxLakhs: t.salaryMaxLakhs,
+      },
+    });
+  }
+  console.log(`✅ Seeded ${JOB_TEMPLATES.length} India job role templates`);
 
   // Create org + recruiter
   const org = await prisma.organization.upsert({

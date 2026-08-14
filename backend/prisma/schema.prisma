@@ -149,11 +149,12 @@ model Candidate {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  opening         Opening          @relation(fields: [openingId], references: [id])
-  interviews      Interview[]
-  offerLetters    OfferLetter[]
-  talentPoolEntry TalentPoolEntry?
-  chatSessions    ChatSession[]
+  opening               Opening                @relation(fields: [openingId], references: [id])
+  interviews            Interview[]
+  offerLetters          OfferLetter[]
+  talentPoolEntry       TalentPoolEntry?
+  chatSessions          ChatSession[]
+  employmentVerification EmploymentVerification?
 
   @@unique([email, openingId])
   @@map("candidates")
@@ -418,4 +419,44 @@ model Integration {
 
   @@unique([organizationId, provider])
   @@map("integrations")
+}
+
+// ─── India Enterprise: Job Templates ───────────────────────────────────────────
+
+model JobTemplate {
+  id              String   @id @default(cuid())
+  title           String
+  sector          String   // IT_SERVICES | BPO | BANKING | MANUFACTURING | HEALTHCARE | RETAIL | TELECOM
+  level           String   // JUNIOR | MID | SENIOR | LEAD | MANAGER
+  skills          Json     // string[]
+  jobDescription  String   @db.Text
+  sampleQuestions Json     // string[]
+  salaryMinLakhs  Int      // INR lakhs per annum
+  salaryMaxLakhs  Int      // INR lakhs per annum
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  @@unique([title, level])
+  @@map("job_templates")
+}
+
+// ─── India Enterprise: EPFO/UAN Employment Verification ───────────────────────
+// SIMULATION ONLY — no real EPFO integration exists. isSimulated is always true
+// on every record this app creates; kept as an explicit column (rather than
+// implied) so it can never be silently dropped by a future consumer of this data.
+
+model EmploymentVerification {
+  id                String    @id @default(cuid())
+  candidateId       String    @unique
+  uanNumber         String?
+  verifiedAt        DateTime?
+  status            String    @default("PENDING") // PENDING | VERIFIED | FAILED | MANUAL_REVIEW
+  employmentHistory Json?     // [{employer, startDate, endDate, epfoOffice}] — simulated
+  discrepancies     Json?     // [{claim, epfoFinding, severity}]
+  isSimulated       Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+
+  candidate Candidate @relation(fields: [candidateId], references: [id])
+
+  @@map("employment_verifications")
 }

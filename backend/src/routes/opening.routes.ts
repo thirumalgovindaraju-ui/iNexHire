@@ -25,6 +25,24 @@ const createOpeningSchema = z.object({
 
 const updateOpeningSchema = createOpeningSchema.partial();
 
+const SECTOR_LABELS: Record<string, string> = {
+  IT_SERVICES: 'IT Services',
+  BPO: 'BPO',
+  BANKING: 'Banking',
+  MANUFACTURING: 'Manufacturing',
+  HEALTHCARE: 'Healthcare',
+  RETAIL: 'Retail',
+  TELECOM: 'Telecom',
+};
+
+const LEVEL_TO_DIFFICULTY: Record<string, 'EASY' | 'MEDIUM' | 'HARD'> = {
+  JUNIOR: 'EASY',
+  MID: 'MEDIUM',
+  SENIOR: 'HARD',
+  LEAD: 'HARD',
+  MANAGER: 'HARD',
+};
+
 // GET /api/openings
 router.get('/', async (req, res, next) => {
   try {
@@ -120,6 +138,48 @@ router.delete('/:id', async (req, res, next) => {
     if (!existing) throw new AppError(404, 'Opening not found');
     await prisma.opening.delete({ where: { id: req.params.id } });
     res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/openings/from-template/:templateId — create an opening pre-filled from a JobTemplate
+router.post('/from-template/:templateId', async (req, res, next) => {
+  try {
+    const template = await prisma.jobTemplate.findFirst({
+      where: { id: req.params.templateId, isActive: true },
+    });
+    if (!template) throw new AppError(404, 'Template not found');
+
+    const skills = (template.skills as string[]) ?? [];
+    const sampleQuestions = (template.sampleQuestions as string[]) ?? [];
+
+    const opening = await prisma.opening.create({
+      data: {
+        title: template.title,
+        department: SECTOR_LABELS[template.sector] ?? template.sector,
+        jobDescription: template.jobDescription,
+        skills,
+        difficulty: LEVEL_TO_DIFFICULTY[template.level] ?? 'MEDIUM',
+        questionCount: sampleQuestions.length || 10,
+        createdById: req.user!.userId,
+        organizationId: req.user!.organizationId,
+      },
+    });
+
+    if (sampleQuestions.length > 0) {
+      await prisma.question.createMany({
+        data: sampleQuestions.map((text, i) => ({
+          openingId: opening.id,
+          text,
+          type: 'behavioral',
+          order: i + 1,
+          timeLimit: 120,
+        })),
+      });
+    }
+
+    res.status(201).json({ success: true, opening, questionsCreated: sampleQuestions.length });
   } catch (err) {
     next(err);
   }

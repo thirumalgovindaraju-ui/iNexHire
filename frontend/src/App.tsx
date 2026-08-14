@@ -16,6 +16,8 @@ import Candidates from './pages/recruiter/Candidates';
 import CandidateDetail from './pages/recruiter/CandidateDetail';
 import ReportDetail from './pages/recruiter/ReportDetail';
 import Analytics from './pages/recruiter/Analytics';
+import JobTemplates from './pages/recruiter/JobTemplates';
+import EPFOVerification from './pages/recruiter/EPFOVerification';
 // Enterprise v2
 import Compliance from './pages/recruiter/Compliance';
 import OfferLetters from './pages/recruiter/OfferLetters';
@@ -72,6 +74,8 @@ export default function App() {
           <Route path="/openings" element={<Openings />} />
           <Route path="/openings/new" element={<CreateOpening />} />
           <Route path="/openings/:id" element={<OpeningDetail />} />
+          <Route path="/templates" element={<JobTemplates />} />
+          <Route path="/epfo-verification" element={<EPFOVerification />} />
           <Route path="/candidates" element={<Candidates />} />
           <Route path="/candidates/:id" element={<CandidateDetail />} />
           <Route path="/reports/:interviewId" element={<ReportDetail />} />
