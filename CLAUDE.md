@@ -3,14 +3,19 @@
 ## What this is
 AI-powered interview SaaS. Core loop: recruiter creates job → AI generates
 questions → candidate does AI interview (STT) → BullMQ job scores answers via
-OpenAI → report generated → recruiter decides.
+Claude → report generated → recruiter decides.
 
 ## Stack
 - **Frontend**: React 18 + TypeScript + Vite + TailwindCSS + Zustand
 - **Backend**: Node.js + Express + TypeScript + Prisma ORM
-- **DB**: PostgreSQL + Redis
-- **AI**: OpenAI (`ai.service.ts`) — model configurable via `env.openaiModel`
-- **Jobs**: BullMQ (`evaluation.job.ts`)
+- **DB**: PostgreSQL (Neon in production) + Redis (optional — see note below)
+- **AI**: Anthropic Claude (`claude-sonnet-4-6`) for every text-generation
+  function in `ai.service.ts` and `adaptive.service.ts`. OpenAI is only kept
+  around (and is optional at boot — warns, doesn't throw, if unset) for a
+  future Whisper STT integration that doesn't exist yet.
+- **Jobs**: BullMQ (`evaluation.job.ts`) — skipped entirely if Redis isn't
+  reachable at boot; AI evaluation just doesn't run in that case, it doesn't
+  crash the server.
 - **Email**: Nodemailer / SendGrid
 - **Validation**: Zod (`middleware/validate.ts`)
 - **Auth**: JWT + refresh tokens (`utils/jwt.ts`, `middleware/auth.ts`)
@@ -18,9 +23,12 @@ OpenAI → report generated → recruiter decides.
 ## Repo layout
 ```
 backend/
-  prisma/schema.prisma        # 15 models — see "Data model" below
-  src/routes/                 # auth, opening, candidate, interview,
-                               #   report, dashboard, upload, adaptive
+  prisma/schema.prisma        # 20 models — see "Data model" below
+  src/routes/                 # auth, opening, candidate, interview, report,
+                               #   dashboard, upload, adaptive, compliance,
+                               #   offer, sentiment, culturefit, retention,
+                               #   chatbot, ranking, talentpool, analytics,
+                               #   notifications, auditlog
   src/services/                # ai.service.ts, adaptive.service.ts,
                                #   email.service.ts, storage.service.ts
   src/jobs/evaluation.job.ts  # BullMQ worker — scores responses async
@@ -36,7 +44,8 @@ frontend/
 ## Data model (real, in schema.prisma)
 `Organization`, `User`, `RefreshToken`, `Opening`, `Question`, `Candidate`,
 `Interview`, `Response`, `Report`, `ProctorLog`, `OfferLetter`,
-`TalentPoolEntry`, `BiasAudit`, `AuditLog`, `Integration`.
+`TalentPoolEntry`, `BiasAudit`, `AuditLog`, `Integration`, `SentimentReport`,
+`CultureFitScore`, `RetentionPrediction`, `ChatSession`, `Notification`.
 
 ## ⚠️ Critical context: docs vs. reality
 There are three READMEs. **Don't trust the enterprise ones as a description
@@ -44,31 +53,37 @@ of current state:**
 
 - `README.md` — accurate. Describes the real MVP core loop above.
 - `README-ENTERPRISE.md` / `README-ENTERPRISE-V3.md` — **aspirational specs**,
-  not implemented. They list ~45 modules, new API routes, and new Prisma
-  models (`SentimentReport`, `CultureFitScore`, `RetentionPrediction`,
-  `VideoHighlight`, `PanelVote`, `Scorecard`, `ChatbotConversation`,
-  `BrandingConfig`, `NotificationRule`) that **do not exist yet** in
-  `schema.prisma`.
+  only partially implemented (see wiring status below). Don't assume every
+  route/model/module they list has been built just because *some* have.
 
-**The frontend is ahead of the backend.** These pages exist and render, but
-are currently **UI-only with hardcoded mock data arrays and zero API calls**
-(verified: no `api.ts`/`fetch`/`axios` usage in them as of this writing):
-- `SentimentAnalysis.tsx`
-- `CultureFit.tsx`
-- `PredictiveRetention.tsx`
-- `CandidateChatbot.tsx`
-- `VideoHighlights.tsx`
-- `CollaborativeReview.tsx`
-- `ScorecardBuilder.tsx`
-- `MockMate.tsx`
-- `CandidateRanking.tsx`
-- `MultiLanguage.tsx`, `WhiteLabel.tsx`, `Integrations.tsx`,
-  `TeamRoles.tsx`, `SSOSettings.tsx`, `AuditLogs.tsx`, `OfferLetters.tsx`,
-  `TalentPool.tsx`, `PipelineBoard.tsx`, `Compliance.tsx` — check each
-  individually before assuming they're wired up; some (e.g. `Compliance.tsx`
-  against `BiasAudit`, `OfferLetters.tsx` against `OfferLetter`,
-  `AuditLogs.tsx` against `AuditLog`) have a real backing model already and
-  are the cheapest to wire up first.
+**Frontend wiring status (updated 2026-08-14):**
+
+*Production-tested — real backend, exercised end-to-end:*
+- `Compliance.tsx` → `BiasAudit` model, `/api/compliance/*`, `scanBias()`.
+- `OfferLetters.tsx` → `OfferLetter` model, `/api/offers/*`, `generateOfferLetter()`.
+
+*Newly wired (2026-08-14) — real backend, but only typechecked/built, not
+manually tested end-to-end. **Review org-ownership checks in each route
+before relying on these in production** — they were adapted quickly from
+an unapplied draft (`enterprise/enterprise.routes.ts`) and deserve a second
+look, particularly the `findOwnedInterview`-style checks in
+`sentiment.routes.ts` / `culturefit.routes.ts` / `retention.routes.ts` and
+the notifications mark-read scoping:*
+- `SentimentAnalysis.tsx` → `SentimentReport` model, `/api/sentiment/*`, `analyseSentiment()`.
+- `CultureFit.tsx` → `CultureFitScore` model, `/api/culture-fit/*`, `scoreCultureFit()`.
+- `PredictiveRetention.tsx` → `RetentionPrediction` model, `/api/retention/*`, `predictRetention()`.
+- `CandidateChatbot.tsx` → `ChatSession` model, `/api/chatbot/message`, `chatbotReply()`.
+- `CandidateRanking.tsx` → real `GET /api/reports` list endpoint (added alongside this work), sorted by score. Does not call the also-new `/api/ranking/:openingId` AI-rerank route — that route exists but nothing in the frontend calls it yet.
+- `TalentPool.tsx` → `TalentPoolEntry` model (pre-existing), `/api/talent-pool`.
+- `Analytics.tsx` → KPI row + recommendation pie chart use real `/api/dashboard` data. The funnel, weekly trend, department table, and cost-savings block are still hardcoded sample data (explicitly labeled "SAMPLE DATA" in the UI) — no backend aggregation exists for those yet.
+- `AuditLogs.tsx` → `AuditLog` model (pre-existing), `/api/audit-logs`.
+
+*Still UI-only mock, zero API calls, not touched by the 2026-08-14 pass:*
+- `VideoHighlights.tsx`, `CollaborativeReview.tsx`, `ScorecardBuilder.tsx`,
+  `MockMate.tsx`, `MultiLanguage.tsx`, `WhiteLabel.tsx`, `Integrations.tsx`,
+  `TeamRoles.tsx`, `SSOSettings.tsx`, `PipelineBoard.tsx`. These would need
+  new Prisma models (e.g. `VideoHighlight`, `Scorecard`, `PanelVote`,
+  `BrandingConfig`) that don't exist in `schema.prisma` — treat as new work.
 
 **When asked to "build feature X from the v3 README," always confirm first**
 whether the backend piece exists. Don't assume the enterprise README
@@ -89,18 +104,20 @@ describes shipped functionality.
 - Backend dev server: `npm run dev` (localhost:4000). Frontend: `npm run dev`
   (localhost:5173, Vite).
 - `.env.example` in both `backend/` and `frontend/` — copy to `.env` and fill
-  in real values (`OPENAI_API_KEY`, `JWT_SECRET`, DB/Redis URLs) before
-  running anything.
+  in real values (`ANTHROPIC_API_KEY`, `JWT_SECRET`, DB/Redis URLs) before
+  running anything. `OPENAI_API_KEY` is optional (Whisper STT only, not
+  built yet) — the app won't fail to boot without it.
 
 ## Known gaps / good first tasks
-1. Wire `Compliance.tsx` → real `BiasAudit` model + a `/api/compliance/*`
-   route + a `scanBias()` addition to `ai.service.ts`. Model already exists,
-   frontend already exists — just the middle layer is missing.
-2. Same pattern for `OfferLetters.tsx` (`OfferLetter` model exists) and
-   `AuditLogs.tsx` (`AuditLog` model exists).
-3. Everything else in README-ENTERPRISE-V3.md needs schema + service + route
-   + frontend wiring all four, in that order — treat it as new work, not a
-   "connect the dots" task.
+1. Manually test the 8 newly-wired enterprise pages end-to-end (see wiring
+   status above) and specifically re-check org-ownership scoping on the new
+   routes before treating them as production-ready.
+2. Wire the AI-rerank route `/api/ranking/:openingId` into `CandidateRanking.tsx`
+   (or drop the route if the plain score-sort is judged sufficient — right
+   now the route exists but nothing calls it).
+3. Everything still in the "UI-only mock" list above needs schema + service +
+   route + frontend wiring all four, in that order — treat it as new work,
+   not a "connect the dots" task.
 
 ## Don't
 - Don't treat README-ENTERPRISE-V3.md's route list or Prisma snippets as
