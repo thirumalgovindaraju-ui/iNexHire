@@ -259,9 +259,55 @@ export interface BiasScanResult {
   flags: BiasFlag[];
 }
 
+export type Jurisdiction = 'IN' | 'UK' | 'US' | 'ALL';
+
+const JURISDICTION_LAW_BLOCKS: Record<'IN' | 'UK' | 'US', string> = {
+  IN: `INDIA:
+- Persons with Disabilities Act 2016 (RPwD Act) — disability-exclusionary language
+- Equal Remuneration Act 1976 — gender-based pay discrimination signals
+- Maternity Benefit Act 1961 — language that may deter women of childbearing age (e.g. implying continuous availability, no career breaks)
+- Sexual Harassment of Women at Workplace Act 2013 (POSH) — hostile work environment signals
+- SC/ST (Prevention of Atrocities) Act — caste-discriminatory language or coded caste/community references
+- Age discrimination — age limits beyond what's reasonable given India's standard retirement age of 58-60
+- Caste, religion, or community references, coded or explicit — illegal
+- "Hindi speaking only" required in a non-Hindi-speaking state — potential linguistic/regional discrimination
+- "Only male candidates" / "Only female candidates" or similar gender-specific candidate requirements — illegal in India`,
+  UK: `UK:
+- Equality Act 2010 — discrimination based on the 9 protected characteristics (age, disability, gender reassignment, marriage/civil partnership, pregnancy/maternity, race, religion/belief, sex, sexual orientation)
+- UK GDPR — excessive or unnecessary personal data requests in the posting/questions
+- Equality and Human Rights Commission (EHRC) guidelines on non-discriminatory recruitment language`,
+  US: `US:
+- EEOC guidelines — language that could constitute disparate treatment or disparate impact
+- Age Discrimination in Employment Act (ADEA) — age-restrictive or age-coded language (40+ protected)
+- Americans with Disabilities Act (ADA) — disability-exclusionary language or unnecessary physical requirements
+- Title VII of the Civil Rights Act — discrimination based on race, color, religion, sex, or national origin`,
+};
+
+function lawBlocksFor(jurisdiction: Jurisdiction): string {
+  const codes: Array<'IN' | 'UK' | 'US'> = jurisdiction === 'ALL' ? ['IN', 'UK', 'US'] : [jurisdiction];
+  return codes.map((c) => JURISDICTION_LAW_BLOCKS[c]).join('\n\n');
+}
+
+function jurisdictionFraming(jurisdiction: Jurisdiction): string {
+  switch (jurisdiction) {
+    case 'IN':
+      return 'The applicable jurisdiction is INDIA.';
+    case 'UK':
+      return 'The applicable jurisdiction is the UK.';
+    case 'US':
+      return 'The applicable jurisdiction is the US.';
+    case 'ALL':
+    default:
+      return `This client (e.g. iOPEX) serves multiple markets — check against ALL of India, UK, and US
+employment law simultaneously. Weight every jurisdiction equally; do not treat any one of
+them as secondary.`;
+  }
+}
+
 export async function scanBias(
   text: string,
-  scanType: 'jd' | 'questions'
+  scanType: 'jd' | 'questions',
+  jurisdiction: Jurisdiction = 'ALL'
 ): Promise<BiasScanResult> {
   const context =
     scanType === 'jd'
@@ -269,10 +315,7 @@ export async function scanBias(
       : 'interview questions';
 
   const prompt = `You are an expert in inclusive hiring practices and employment law compliance.
-Your primary jurisdiction is INDIA. Treat UK/US employment law as secondary reference
-points, relevant only for roles serving multinational clients — India-specific violations
-should be weighted at least as heavily as general/Western ones, and never overlooked in
-favour of them.
+${jurisdictionFraming(jurisdiction)}
 Analyse this ${context} for language that could deter qualified candidates from underrepresented groups or create legal liability.
 
 ${context.toUpperCase()}:
@@ -280,29 +323,14 @@ ${context.toUpperCase()}:
 ${text.slice(0, 3000)}
 """
 
-Check for general/Western signals:
+Check for general signals (relevant regardless of jurisdiction):
 - Gender-coded language (e.g. "rockstar", "ninja", "aggressive", "dominate")
-- Age bias (e.g. "recent graduate", "digital native", "young and energetic")
 - Exclusionary culture language (e.g. "culture fit", "fraternity", "brotherhood")
 - Credential inflation (e.g. "degree required" when experience would suffice)
-- Disability-exclusionary language
-- Any language that could violate UK/US equal opportunity employment law (secondary reference, for MNC clients)
-
-Check for India-specific legal signals (primary jurisdiction):
-- Persons with Disabilities Act 2016 (RPwD Act) — disability-exclusionary language
-- Equal Remuneration Act 1976 — gender-based pay discrimination signals
-- Maternity Benefit Act 1961 — language that may deter women of childbearing age (e.g. implying continuous availability, no career breaks)
-- Sexual Harassment of Women at Workplace Act 2013 (POSH) — hostile work environment signals
-- SC/ST (Prevention of Atrocities) Act — caste-discriminatory language or coded caste/community references
-- Indian Contract Labour Act — exploitative language signals (e.g. no benefits implied, informal/contract-only framing where a regular role is expected)
-- Shops and Establishments Act — unreasonable working hours language (e.g. "willing to work long hours", undefined overtime expectations)
-
-Check for these specific India/iOPEX red flags:
-- "Only male candidates" / "Only female candidates" or similar gender-restrictive phrasing — illegal in India
-- Caste, religion, or community references, coded or explicit — illegal
-- Age limits beyond what's reasonable given India's standard retirement age of 58-60
-- "Hindi speaking only" required in a non-Hindi-speaking state — potential linguistic/regional discrimination
 - "Local candidates only" — may violate equal opportunity principles
+
+Check for these jurisdiction-specific legal signals:
+${lawBlocksFor(jurisdiction)}
 
 Return ONLY valid JSON (no markdown, no other text):
 {
@@ -334,7 +362,8 @@ If no bias is detected, return: { "score": 100, "flags": [] }`;
     // Clamp score to 0–100 and cap at 100 if no flags
     const clampedScore = Math.max(0, Math.min(100, parsed.score ?? 100));
     return { score: clampedScore, flags: parsed.flags ?? [] };
-  } catch {
+  } catch (err) {
+    console.error('[ai.service] scanBias failed:', err);
     // Fallback — never throw, consistent with rest of ai.service.ts
     return { score: 100, flags: [] };
   }

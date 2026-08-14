@@ -16,6 +16,7 @@ interface BiasAudit {
   openingId: string;
   flags: BiasFlag[];
   score: number;
+  jurisdiction: Jurisdiction;
   resolvedAt: string | null;
   createdAt: string;
 }
@@ -31,6 +32,24 @@ interface OpeningRow {
   audit: BiasAudit | null;
 }
 
+type Jurisdiction = 'IN' | 'UK' | 'US' | 'ALL';
+
+const JURISDICTIONS: { code: Jurisdiction; flag: string; label: string }[] = [
+  { code: 'IN', flag: '🇮🇳', label: 'India' },
+  { code: 'UK', flag: '🇬🇧', label: 'UK' },
+  { code: 'US', flag: '🇺🇸', label: 'US' },
+  { code: 'ALL', flag: '🌐', label: 'All Markets' },
+];
+
+function jurisdictionLabel(code: string): string {
+  switch (code) {
+    case 'IN': return 'India';
+    case 'UK': return 'UK';
+    case 'US': return 'US';
+    default: return 'India + UK + US';
+  }
+}
+
 const SEV_COLORS: Record<string, [string, string]> = {
   high:   ['#fff1f2', '#f43f5e'],
   medium: ['#fffbeb', '#f59e0b'],
@@ -41,6 +60,7 @@ export default function Compliance() {
   const [openings, setOpenings]     = useState<OpeningOption[]>([]);
   const [audits, setAudits]         = useState<BiasAudit[]>([]);
   const [selectedOpeningId, setSelectedOpeningId] = useState<string | null>(null);
+  const [jurisdiction, setJurisdiction] = useState<Jurisdiction>('ALL');
   const [loading, setLoading]       = useState(true);
   const [scanning, setScanning]     = useState(false);
   const [resolving, setResolving]   = useState(false);
@@ -79,6 +99,7 @@ export default function Compliance() {
       setError(null);
       const { data } = await apiClient.post(`/compliance/${selectedOpeningId}`, {
         scanType: 'jd',
+        jurisdiction,
       });
       setAudits((prev) => {
         const withoutThis = prev.filter((a) => a.openingId !== selectedOpeningId);
@@ -139,18 +160,49 @@ export default function Compliance() {
   return (
     <div style={S.page}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: '#0f172a', marginBottom: 3 }}>
-            Compliance & Bias Detection
-          </h1>
-          <p style={{ fontSize: 13, color: '#94a3b8' }}>
-            Claude AI-powered job description analysis for inclusive hiring
-          </p>
+      <div style={{ marginBottom: 20 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#0f172a', marginBottom: 3 }}>
+          Compliance & Bias Detection
+        </h1>
+        <p style={{ fontSize: 13, color: '#94a3b8' }}>
+          Claude AI-powered job description analysis for inclusive hiring
+        </p>
+      </div>
+
+      {/* Jurisdiction selector + Run Scan */}
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          Jurisdiction
         </div>
-        <Button icon={<RefreshCw size={14} />} onClick={runScan} loading={scanning} disabled={!selectedOpeningId}>
-          {scanning ? 'Scanning…' : 'Run Scan'}
-        </Button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {JURISDICTIONS.map((j) => {
+            const isSelected = jurisdiction === j.code;
+            return (
+              <button
+                key={j.code}
+                onClick={() => setJurisdiction(j.code)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '7px 16px', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                  background: isSelected ? '#f59e0b' : '#fff',
+                  color: isSelected ? '#fff' : '#334155',
+                  border: isSelected ? '1px solid #f59e0b' : '1px solid #e2e8f0',
+                }}
+              >
+                <span>{j.flag}</span> {j.label}
+              </button>
+            );
+          })}
+          <Button
+            icon={<RefreshCw size={14} />}
+            onClick={runScan}
+            loading={scanning}
+            disabled={!selectedOpeningId}
+            style={{ marginLeft: 'auto' }}
+          >
+            {scanning ? 'Scanning…' : 'Run Scan'}
+          </Button>
+        </div>
       </div>
 
       {error && (
@@ -254,6 +306,9 @@ export default function Compliance() {
                     <div style={{ fontSize: 11, color: '#94a3b8' }}>
                       Last scanned {new Date(selectedRow.audit.createdAt).toLocaleDateString()}
                       {selectedRow.audit.resolvedAt && ' · Resolved'}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#b45309', marginTop: 2 }}>
+                      Scanned under: {jurisdictionLabel(selectedRow.audit.jurisdiction)}
                     </div>
                   </div>
                   {(selectedRow.audit.flags?.length ?? 0) > 0 && !selectedRow.audit.resolvedAt && (

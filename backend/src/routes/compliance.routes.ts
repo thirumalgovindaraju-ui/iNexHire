@@ -13,6 +13,7 @@ router.use(authenticate);
 
 const scanSchema = z.object({
   scanType: z.enum(['jd', 'questions']).default('jd'),
+  jurisdiction: z.enum(['IN', 'UK', 'US', 'ALL']).default('ALL'),
 });
 
 // POST /api/compliance/:openingId — trigger a bias scan
@@ -22,7 +23,10 @@ router.post(
   async (req, res, next) => {
     try {
       const { openingId } = req.params;
-      const { scanType } = req.body as { scanType: 'jd' | 'questions' };
+      const { scanType, jurisdiction } = req.body as {
+        scanType: 'jd' | 'questions';
+        jurisdiction: 'IN' | 'UK' | 'US' | 'ALL';
+      };
 
       // Fetch the opening and verify it belongs to this org
       const opening = await prisma.opening.findFirst({
@@ -38,7 +42,7 @@ router.post(
           : opening.questions.map((q) => q.text).join('\n');
 
       // Run Claude bias scan
-      const result = await scanBias(textToScan, scanType);
+      const result = await scanBias(textToScan, scanType, jurisdiction);
 
       // Upsert — replace any previous audit for this opening
       const audit = await prisma.biasAudit.upsert({
@@ -47,10 +51,12 @@ router.post(
           openingId,
           flags: result.flags as unknown as Prisma.InputJsonValue,
           score: result.score,
+          jurisdiction,
         },
         update: {
           flags: result.flags as unknown as Prisma.InputJsonValue,
           score: result.score,
+          jurisdiction,
           resolvedAt: null,
           resolvedBy: null,
         },

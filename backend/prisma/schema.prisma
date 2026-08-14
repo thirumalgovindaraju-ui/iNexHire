@@ -275,12 +275,13 @@ model TalentPoolEntry {
 }
 
 model BiasAudit {
-  id        String   @id @default(cuid())
-  openingId String   @unique
-  flags     Json     // [{type, word, suggestion, severity}]
-  score     Int      // 0-100 compliance score
-  resolvedAt DateTime?
-  resolvedBy String?
+  id           String   @id @default(cuid())
+  openingId    String   @unique
+  flags        Json     // [{type, word, suggestion, severity}]
+  score        Int      // 0-100 compliance score
+  jurisdiction String   @default("ALL") // IN | UK | US | ALL
+  resolvedAt   DateTime?
+  resolvedBy   String?
 
   createdAt DateTime @default(now())
 
