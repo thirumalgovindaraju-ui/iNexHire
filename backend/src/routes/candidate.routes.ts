@@ -216,7 +216,7 @@ router.post('/:id/send-invite', async (req, res, next) => {
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
-async function createInterviewAndSendInvite(
+export async function createInterviewAndSendInvite(
   candidate: any,
   opening: any
 ): Promise<any> {
