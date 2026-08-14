@@ -164,6 +164,10 @@ export const linkedinApi = {
     const res = await apiClient.post('/integrations/linkedin/invite', data);
     return res.data;
   },
+  parseProfile: async (data: { profileUrl: string; pastedText: string }) => {
+    const res = await apiClient.post('/integrations/linkedin/parse-profile', data);
+    return res.data;
+  },
   jobPost: async (openingId: string) => {
     const res = await apiClient.post(`/integrations/linkedin/job-post/${openingId}`);
     return res.data;

@@ -1052,3 +1052,60 @@ Return ONLY valid JSON array, no other text:
     return [];
   }
 }
+
+// ─── Extract LinkedIn Profile From Pasted Text ─────────────────────────────────
+// NOT a scrape. This never fetches linkedin.com — it only structures text the
+// recruiter copy-pasted themselves from a profile page they viewed in their own
+// browser. Claude is instructed to extract only what's explicitly present and
+// never invent or infer fields that aren't in the text.
+
+export interface ExtractedLinkedInProfile {
+  name: string | null;
+  headline: string | null;
+  location: string | null;
+  skills: string[];
+}
+
+export async function extractLinkedInProfileFromText(pastedText: string): Promise<ExtractedLinkedInProfile> {
+  const prompt = `You are extracting structured fields from text a recruiter copy-pasted from a
+candidate's public LinkedIn profile page. This text was provided directly by the user — you did
+not look anything up and have no other source of information about this person.
+
+Extract ONLY information explicitly present in the text below. Do NOT guess, infer, or invent
+anything that isn't directly stated, even if it seems like a reasonable assumption. If a field
+isn't present in the text, return null for it (or an empty array for skills).
+
+PASTED TEXT:
+"""
+${pastedText.slice(0, 4000)}
+"""
+
+Return ONLY valid JSON, no other text:
+{
+  "name": "<full name if present, else null>",
+  "headline": "<professional headline/title if present, else null>",
+  "location": "<city/location if present, else null>",
+  "skills": ["<skill explicitly mentioned in the text>"]
+}`;
+
+  try {
+    const res = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 500,
+      temperature: 0,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const content = res.content[0].type === 'text' ? res.content[0].text : '{}';
+    const cleaned = content.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(cleaned);
+    return {
+      name: parsed.name ?? null,
+      headline: parsed.headline ?? null,
+      location: parsed.location ?? null,
+      skills: Array.isArray(parsed.skills) ? parsed.skills : [],
+    };
+  } catch (err) {
+    console.error('[ai.service] extractLinkedInProfileFromText failed:', err);
+    return { name: null, headline: null, location: null, skills: [] };
+  }
+}

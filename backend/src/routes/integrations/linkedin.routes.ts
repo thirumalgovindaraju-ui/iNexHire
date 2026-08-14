@@ -10,7 +10,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/db';
 import { authenticate } from '../../middleware/auth';
 import { AppError } from '../../middleware/errorHandler';
-import { generateSimulatedLinkedInApplicants } from '../../services/ai.service';
+import { generateSimulatedLinkedInApplicants, extractLinkedInProfileFromText } from '../../services/ai.service';
 import { createInterviewAndSendInvite } from '../candidate.routes';
 
 const router = Router();
@@ -145,6 +145,36 @@ router.post('/invite', async (req, res, next) => {
       simulated: true,
       note: 'Name was guessed from the profile URL via simple pattern matching, not a real LinkedIn API call.',
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/integrations/linkedin/parse-profile
+// body: { profileUrl, pastedText }
+// NOT a scrape — this never fetches linkedin.com. The recruiter pastes text
+// they copied themselves from the candidate's public profile page (viewed in
+// their own browser); Claude structures only what's explicitly present in
+// that text. This is real extraction of real user-supplied content, not
+// simulated/fictional data — but it can only report what was pasted, so
+// missing fields come back null rather than guessed.
+router.post('/parse-profile', async (req, res, next) => {
+  try {
+    const { profileUrl, pastedText } = req.body as { profileUrl?: string; pastedText?: string };
+    if (!profileUrl) throw new AppError(400, 'profileUrl required');
+    if (!LINKEDIN_PROFILE_REGEX.test(profileUrl.trim())) {
+      throw new AppError(400, 'profileUrl must look like https://www.linkedin.com/in/<slug>');
+    }
+    if (!pastedText || pastedText.trim().length < 20) {
+      throw new AppError(400, 'Paste at least a few lines of profile text (name, headline, skills, etc.)');
+    }
+
+    const integration = await getLinkedInIntegration(req.user!.organizationId);
+    if (integration?.status !== 'CONNECTED') throw new AppError(400, 'Connect LinkedIn first');
+
+    const extracted = await extractLinkedInProfileFromText(pastedText);
+
+    res.json({ success: true, extracted, source: 'user-pasted-text' });
   } catch (err) {
     next(err);
   }

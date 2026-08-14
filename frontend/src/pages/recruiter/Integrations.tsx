@@ -1,6 +1,6 @@
 // src/pages/recruiter/Integrations.tsx — LinkedIn wired to real backend (SIMULATION ONLY); other cards still mock
 import { useState, useEffect } from 'react';
-import { Zap, CheckCircle, AlertTriangle, Linkedin, Send, Rss, UserPlus, Sparkles } from 'lucide-react';
+import { Zap, CheckCircle, AlertTriangle, Linkedin, Send, Rss, UserPlus, Sparkles, ClipboardPaste } from 'lucide-react';
 import { Button, Spinner } from '../../components/ui';
 import { linkedinApi, openingsApi } from '../../services/api';
 
@@ -16,6 +16,13 @@ const OTHER_INTEGRATIONS = [
 ];
 
 interface OpeningOption { id: string; title: string; }
+
+interface ExtractedProfile {
+  name: string | null;
+  headline: string | null;
+  location: string | null;
+  skills: string[];
+}
 
 interface SimulatedApplicant {
   name: string;
@@ -45,6 +52,9 @@ export default function Integrations() {
   const [inviteName, setInviteName] = useState('');
   const [inviting, setInviting] = useState(false);
   const [inviteResult, setInviteResult] = useState<any>(null);
+  const [pastedText, setPastedText] = useState('');
+  const [extracting, setExtracting] = useState(false);
+  const [extracted, setExtracted] = useState<ExtractedProfile | null>(null);
 
   // Job post + applicants
   const [postOpeningId, setPostOpeningId] = useState('');
@@ -96,6 +106,21 @@ export default function Integrations() {
     }
   }
 
+  async function extractProfile() {
+    if (!profileUrl || !pastedText) return;
+    try {
+      setExtracting(true);
+      setError(null);
+      const data = await linkedinApi.parseProfile({ profileUrl: profileUrl.trim(), pastedText });
+      setExtracted(data.extracted);
+      if (data.extracted?.name) setInviteName(data.extracted.name);
+    } catch (err: any) {
+      setError(err?.response?.data?.error ?? 'Failed to extract profile info');
+    } finally {
+      setExtracting(false);
+    }
+  }
+
   async function sendInvite() {
     if (!inviteOpeningId || !profileUrl || !inviteEmail) return;
     try {
@@ -112,6 +137,8 @@ export default function Integrations() {
       setProfileUrl('');
       setInviteEmail('');
       setInviteName('');
+      setPastedText('');
+      setExtracted(null);
     } catch (err: any) {
       setError(err?.response?.data?.error ?? 'Failed to send invite');
     } finally {
@@ -240,9 +267,48 @@ export default function Integrations() {
                 </select>
                 <input value={profileUrl} onChange={(e) => setProfileUrl(e.target.value)} placeholder="https://www.linkedin.com/in/jane-doe" style={inputStyle} />
               </div>
+
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '10px 12px', marginBottom: 8 }}>
+                <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6, lineHeight: 1.5 }}>
+                  Optional: paste text you copied yourself from the candidate's public profile page (headline,
+                  about, skills) — we never fetch LinkedIn ourselves. Claude extracts only what's in the text
+                  you paste; nothing is invented.
+                </div>
+                <textarea
+                  value={pastedText}
+                  onChange={(e) => setPastedText(e.target.value)}
+                  placeholder="Paste profile text here..."
+                  rows={3}
+                  style={{ ...inputStyle, width: '100%', resize: 'vertical', fontFamily: 'inherit', marginBottom: 6 }}
+                />
+                <Button size="sm" variant="secondary" icon={<ClipboardPaste size={12} />} onClick={extractProfile} loading={extracting} disabled={!profileUrl || !pastedText}>
+                  Extract Info
+                </Button>
+                {extracted && (
+                  <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div style={{ fontSize: 12, color: '#334155' }}>
+                      <strong>Name:</strong> {extracted.name ?? '— not found in pasted text —'}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#334155' }}>
+                      <strong>Headline:</strong> {extracted.headline ?? '— not found —'}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#334155' }}>
+                      <strong>Location:</strong> {extracted.location ?? '— not found —'}
+                    </div>
+                    {extracted.skills.length > 0 && (
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 2 }}>
+                        {extracted.skills.map((s) => (
+                          <span key={s} style={{ fontSize: 10.5, background: '#eef2ff', color: '#4f46e5', borderRadius: 5, padding: '2px 7px' }}>{s}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8 }}>
                 <input value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="Candidate email (required — real invite is sent here)" style={inputStyle} />
-                <input value={inviteName} onChange={(e) => setInviteName(e.target.value)} placeholder="Name (optional — auto-guessed from URL)" style={inputStyle} />
+                <input value={inviteName} onChange={(e) => setInviteName(e.target.value)} placeholder="Name (auto-filled from extraction, or guessed from URL)" style={inputStyle} />
                 <Button icon={<Send size={13} />} onClick={sendInvite} loading={inviting} disabled={!profileUrl || !inviteEmail}>
                   Send Invite
                 </Button>
