@@ -1,6 +1,6 @@
 // src/layouts/DashboardLayout.tsx — NexHire v3 Final
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Briefcase, Users, BarChart2, LogOut, Bell, Search, Shield, FileText, Zap, Clock, Settings, Database, GitBranch, Brain, Heart, Trophy, ClipboardList, Palette, MessageSquare, Play, Globe, AlertTriangle, UserCog, MessageCircle, TrendingUp, Key, LayoutTemplate, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, Briefcase, Users, BarChart2, LogOut, Bell, Search, Shield, FileText, Zap, Clock, Settings, Database, GitBranch, Brain, Heart, Trophy, ClipboardList, Palette, MessageSquare, Play, Globe, AlertTriangle, UserCog, MessageCircle, TrendingUp, Key, LayoutTemplate, ShieldCheck, Video } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { authApi } from '../services/api';
 import { useState } from 'react';
@@ -11,6 +11,7 @@ const NAV = [
     { to: '/openings', icon: Briefcase, label: 'Job Openings' },
     { to: '/templates', icon: LayoutTemplate, label: 'Job Templates', badge: 'NEW' },
     { to: '/candidates', icon: Users, label: 'Candidates' },
+    { to: '/live-interviews', icon: Video, label: 'Live Interviews', badge: 'NEW' },
     { to: '/pipeline', icon: GitBranch, label: 'Pipeline Board' },
     { to: '/analytics', icon: BarChart2, label: 'Analytics' },
     { to: '/rankings', icon: Trophy, label: 'Candidate Ranking' },

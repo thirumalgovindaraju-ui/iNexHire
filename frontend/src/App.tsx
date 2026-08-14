@@ -18,6 +18,8 @@ import ReportDetail from './pages/recruiter/ReportDetail';
 import Analytics from './pages/recruiter/Analytics';
 import JobTemplates from './pages/recruiter/JobTemplates';
 import EPFOVerification from './pages/recruiter/EPFOVerification';
+import ScheduleLiveInterview from './pages/recruiter/ScheduleLiveInterview';
+import LiveInterviewRoom from './pages/interview/LiveInterviewRoom';
 // Enterprise v2
 import Compliance from './pages/recruiter/Compliance';
 import OfferLetters from './pages/recruiter/OfferLetters';
@@ -76,6 +78,7 @@ export default function App() {
           <Route path="/openings/:id" element={<OpeningDetail />} />
           <Route path="/templates" element={<JobTemplates />} />
           <Route path="/epfo-verification" element={<EPFOVerification />} />
+          <Route path="/live-interviews" element={<ScheduleLiveInterview />} />
           <Route path="/candidates" element={<Candidates />} />
           <Route path="/candidates/:id" element={<CandidateDetail />} />
           <Route path="/reports/:interviewId" element={<ReportDetail />} />
@@ -112,6 +115,10 @@ export default function App() {
           <Route path="/interview/:token/done" element={<InterviewComplete />} />
           <Route path="/interview/complete" element={<InterviewComplete />} />
         </Route>
+        {/* Live video call — deliberately outside DashboardLayout/CandidateLayout so it can
+            own the full viewport (its own header, no app sidebar getting in the way) */}
+        <Route path="/interviews/:interviewId/live" element={<PrivateRoute><LiveInterviewRoom /></PrivateRoute>} />
+        <Route path="/interview/:token/live" element={<LiveInterviewRoom />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

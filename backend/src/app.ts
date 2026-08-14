@@ -29,6 +29,7 @@ import auditLogRoutes from './routes/auditlog.routes';
 import templatesRoutes from './routes/templates.routes';
 import epfoRoutes from './routes/epfo.routes';
 import linkedinRoutes from './routes/integrations/linkedin.routes';
+import liveVideoRoutes from './routes/livevideo.routes';
 
 export function createApp() {
   const app = express();
@@ -90,6 +91,7 @@ export function createApp() {
   app.use('/api/templates', templatesRoutes);
   app.use('/api/epfo', epfoRoutes);
   app.use('/api/integrations/linkedin', linkedinRoutes);
+  app.use('/api/live-video', liveVideoRoutes);
 
   // ─── 404 ───────────────────────────────────────────────────────────────────
   app.use((_req, res) => {

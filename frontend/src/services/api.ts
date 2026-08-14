@@ -182,6 +182,36 @@ export const linkedinApi = {
   },
 };
 
+// ─── Live Video Interviews (Jitsi Meet) ────────────────────────────────────────
+
+export const liveVideoApi = {
+  create: async (interviewId: string, scheduledAt: string) => {
+    const res = await apiClient.post(`/live-video/create/${interviewId}`, { scheduledAt });
+    return res.data;
+  },
+  get: async (interviewId: string) => {
+    const res = await apiClient.get(`/live-video/${interviewId}`);
+    return res.data;
+  },
+  end: async (interviewId: string) => {
+    const res = await apiClient.patch(`/live-video/${interviewId}/end`);
+    return res.data;
+  },
+  joinAsHost: async (interviewId: string) => {
+    const res = await apiClient.patch(`/live-video/${interviewId}/join`);
+    return res.data;
+  },
+  // Candidate-facing (no auth) — keyed by inviteToken, not interviewId
+  getByToken: async (token: string) => {
+    const res = await apiClient.get(`/live-video/by-token/${token}`);
+    return res.data;
+  },
+  joinAsGuest: async (token: string) => {
+    const res = await apiClient.patch(`/live-video/by-token/${token}/join`);
+    return res.data;
+  },
+};
+
 // ─── Candidates ───────────────────────────────────────────────────────────────
 
 export const candidatesApi = {

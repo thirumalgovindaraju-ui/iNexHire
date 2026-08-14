@@ -180,6 +180,7 @@ model Interview {
   sentimentReport      SentimentReport?
   cultureFitScore      CultureFitScore?
   retentionPrediction  RetentionPrediction?
+  liveInterview        LiveInterview?
 
   @@map("interviews")
 }
@@ -459,4 +460,22 @@ model EmploymentVerification {
   candidate Candidate @relation(fields: [candidateId], references: [id])
 
   @@map("employment_verifications")
+}
+
+// ─── Live Video Interview (Jitsi Meet) ─────────────────────────────────────────
+
+model LiveInterview {
+  id          String    @id @default(cuid())
+  interviewId String    @unique
+  roomName    String    @unique
+  scheduledAt DateTime
+  startedAt   DateTime?
+  endedAt     DateTime?
+  hostJoined  Boolean   @default(false)
+  guestJoined Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+
+  interview Interview @relation(fields: [interviewId], references: [id])
+
+  @@map("live_interviews")
 }
