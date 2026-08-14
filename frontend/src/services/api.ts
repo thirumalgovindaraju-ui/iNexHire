@@ -171,6 +171,10 @@ export const interviewsApi = {
 // ─── Reports ──────────────────────────────────────────────────────────────────
 
 export const reportsApi = {
+  list: async () => {
+    const res = await apiClient.get('/reports');
+    return res.data.reports;
+  },
   get: async (interviewId: string) => {
     const res = await apiClient.get(`/reports/${interviewId}`);
     return res.data;

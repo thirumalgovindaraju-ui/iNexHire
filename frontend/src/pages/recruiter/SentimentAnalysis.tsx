@@ -1,15 +1,35 @@
-// src/pages/recruiter/SentimentAnalysis.tsx — NEW: Emotion & Sentiment AI
-import { useState } from 'react';
+// src/pages/recruiter/SentimentAnalysis.tsx — wired to real backend
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Brain, TrendingUp, MessageSquare, Eye, Mic, ChevronLeft, BarChart3 } from 'lucide-react';
+import { Brain, TrendingUp, MessageSquare, Eye, Mic, ChevronLeft, BarChart3, Sparkles } from 'lucide-react';
+import { Button, Spinner } from '../../components/ui';
+import { apiClient, reportsApi } from '../../services/api';
 
-const CANDIDATES = [
-  { id: '1', name: 'Arjun Kapoor', role: 'Sr. Backend Eng.', score: 93, confidence: 88, engagement: 92, clarity: 91, stress: 12, deception: 4, emotions: { happy: 42, neutral: 38, focused: 15, anxious: 5 }, sentiment_timeline: [65,70,72,80,85,88,90,93,91,95,88,92] },
-  { id: '2', name: 'Priya Venkat', role: 'Product Manager', score: 88, confidence: 79, engagement: 85, clarity: 82, stress: 28, deception: 6, emotions: { happy: 35, neutral: 45, focused: 14, anxious: 6 }, sentiment_timeline: [55,60,65,70,72,75,80,82,79,85,83,88] },
-  { id: '3', name: 'Marcus Reed', role: 'Sr. Backend Eng.', score: 61, confidence: 52, engagement: 58, clarity: 60, stress: 48, deception: 18, emotions: { happy: 20, neutral: 42, focused: 10, anxious: 28 }, sentiment_timeline: [40,38,45,50,48,55,52,58,50,62,58,61] },
-];
+interface CandidateOption {
+  interviewId: string;
+  candidateName: string;
+  openingTitle: string;
+  overallScore: number;
+}
 
-const EMOTION_COLORS: Record<string, string> = { happy: '#10b981', neutral: '#94a3b8', focused: '#4f46e5', anxious: '#f59e0b' };
+interface EmotionPoint {
+  questionIndex: number;
+  confidence: number;
+  engagement: number;
+  clarity: number;
+  stress: number;
+}
+
+interface SentimentReport {
+  confidence: number;
+  engagement: number;
+  clarity: number;
+  stress: number;
+  deceptionScore: number;
+  overallSentiment: 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE';
+  emotionTimeline: EmotionPoint[];
+  summary: string;
+}
 
 function MiniBar({ value, max = 100, color }: { value: number; max?: number; color: string }) {
   return (
@@ -22,24 +42,73 @@ function MiniBar({ value, max = 100, color }: { value: number; max?: number; col
   );
 }
 
-function SparkLine({ data, color }: { data: number[]; color: string }) {
-  const w = 100, h = 36;
-  const min = Math.min(...data), max = Math.max(...data);
-  const pts = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - ((v - min) / (max - min + 1)) * h}`).join(' ');
-  return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
-      <polyline fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" points={pts} />
-    </svg>
-  );
-}
-
 export default function SentimentAnalysis() {
   const navigate = useNavigate();
-  const [selected, setSelected] = useState(CANDIDATES[0]);
-  const [tab, setTab] = useState<'overview' | 'timeline' | 'signals'>('overview');
+  const [candidates, setCandidates] = useState<CandidateOption[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [report, setReport] = useState<SentimentReport | null>(null);
+  const [loadingList, setLoadingList] = useState(true);
+  const [loadingReport, setLoadingReport] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const riskColor = selected.deception >= 15 ? '#f43f5e' : selected.deception >= 8 ? '#f59e0b' : '#10b981';
-  const riskLabel = selected.deception >= 15 ? 'High Risk' : selected.deception >= 8 ? 'Review' : 'Low Risk';
+  useEffect(() => {
+    reportsApi.list()
+      .then((reports: any[]) => {
+        const opts: CandidateOption[] = reports.map((r) => ({
+          interviewId: r.interview.id,
+          candidateName: r.interview.candidate.name,
+          openingTitle: r.interview.candidate.opening.title,
+          overallScore: r.overallScore,
+        }));
+        setCandidates(opts);
+        if (opts.length > 0) setSelectedId(opts[0].interviewId);
+      })
+      .catch((err: any) => setError(err?.response?.data?.error ?? 'Failed to load evaluated interviews'))
+      .finally(() => setLoadingList(false));
+  }, []);
+
+  const fetchReport = useCallback(async (interviewId: string) => {
+    try {
+      setLoadingReport(true);
+      setError(null);
+      const { data } = await apiClient.get(`/sentiment/${interviewId}`);
+      setReport(data.report ?? null);
+    } catch (err: any) {
+      setError(err?.response?.data?.error ?? 'Failed to load sentiment report');
+    } finally {
+      setLoadingReport(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedId) fetchReport(selectedId);
+  }, [selectedId, fetchReport]);
+
+  async function runAnalysis() {
+    if (!selectedId) return;
+    try {
+      setRunning(true);
+      setError(null);
+      const { data } = await apiClient.post(`/sentiment/${selectedId}`);
+      setReport(data.report);
+    } catch (err: any) {
+      setError(err?.response?.data?.error ?? 'Analysis failed');
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  const riskColor = (report?.deceptionScore ?? 0) >= 15 ? '#f43f5e' : (report?.deceptionScore ?? 0) >= 8 ? '#f59e0b' : '#10b981';
+  const riskLabel = (report?.deceptionScore ?? 0) >= 15 ? 'High Risk' : (report?.deceptionScore ?? 0) >= 8 ? 'Review' : 'Low Risk';
+
+  if (loadingList) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300 }}>
+        <Spinner size={28} />
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: '24px 28px', maxWidth: 1200, margin: '0 auto' }}>
@@ -54,100 +123,129 @@ export default function SentimentAnalysis() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 16 }}>
-        {/* Candidate list */}
-        <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0' }}>
-          <div style={{ padding: '14px 16px', borderBottom: '1px solid #e2e8f0', fontSize: 13, fontWeight: 600, color: '#0f172a' }}>Analyzed Interviews</div>
-          {CANDIDATES.map(c => (
-            <div key={c.id} onClick={() => setSelected(c)} style={{
-              padding: '12px 16px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9',
-              background: selected.id === c.id ? '#fafafe' : 'transparent',
-              borderLeft: selected.id === c.id ? '3px solid #4f46e5' : '3px solid transparent',
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{c.name}</div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: c.score >= 80 ? '#10b981' : c.score >= 60 ? '#f59e0b' : '#f43f5e' }}>{c.score}</div>
-              </div>
-              <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8 }}>{c.role}</div>
-              <SparkLine data={c.sentiment_timeline} color={c.score >= 80 ? '#10b981' : c.score >= 60 ? '#f59e0b' : '#f43f5e'} />
-            </div>
-          ))}
+      {error && (
+        <div style={{ background: '#fff1f2', border: '1px solid #fecdd3', borderRadius: 8, padding: '10px 14px', color: '#f43f5e', fontSize: 13, marginBottom: 16 }}>
+          {error}
         </div>
+      )}
 
-        {/* Detail panel */}
-        <div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 14 }}>
-            {[
-              { label: 'Confidence', value: selected.confidence, color: '#4f46e5', icon: <TrendingUp size={14} /> },
-              { label: 'Engagement', value: selected.engagement, color: '#10b981', icon: <Eye size={14} /> },
-              { label: 'Clarity', value: selected.clarity, color: '#06b6d4', icon: <MessageSquare size={14} /> },
-              { label: 'Stress Index', value: selected.stress, color: '#f59e0b', icon: <Mic size={14} /> },
-            ].map(m => (
-              <div key={m.label} style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: '14px 16px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8, color: m.color }}>{m.icon}<span style={{ fontSize: 11, color: '#94a3b8' }}>{m.label}</span></div>
-                <div style={{ fontSize: 24, fontWeight: 700, color: m.color, marginBottom: 6 }}>{m.value}%</div>
-                <MiniBar value={m.value} color={m.color} />
+      {candidates.length === 0 ? (
+        <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: 40, textAlign: 'center' }}>
+          <Brain size={40} style={{ color: '#cbd5e1', margin: '0 auto 12px' }} />
+          <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>No evaluated interviews yet</div>
+          <div style={{ fontSize: 13, color: '#94a3b8' }}>Once a candidate completes an interview and is scored, it'll show up here for sentiment analysis.</div>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 16 }}>
+          {/* Candidate list */}
+          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0' }}>
+            <div style={{ padding: '14px 16px', borderBottom: '1px solid #e2e8f0', fontSize: 13, fontWeight: 600, color: '#0f172a' }}>Evaluated Interviews</div>
+            {candidates.map((c) => (
+              <div key={c.interviewId} onClick={() => setSelectedId(c.interviewId)} style={{
+                padding: '12px 16px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9',
+                background: selectedId === c.interviewId ? '#fafafe' : 'transparent',
+                borderLeft: selectedId === c.interviewId ? '3px solid #4f46e5' : '3px solid transparent',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{c.candidateName}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: c.overallScore >= 80 ? '#10b981' : c.overallScore >= 60 ? '#f59e0b' : '#f43f5e' }}>{c.overallScore}</div>
+                </div>
+                <div style={{ fontSize: 11, color: '#94a3b8' }}>{c.openingTitle}</div>
               </div>
             ))}
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-            {/* Emotion breakdown */}
-            <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: '16px' }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', marginBottom: 14 }}>Emotion Breakdown</div>
-              {Object.entries(selected.emotions).map(([emotion, pct]) => (
-                <div key={emotion} style={{ marginBottom: 10 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-                    <span style={{ fontSize: 12, color: '#334155', textTransform: 'capitalize' }}>{emotion}</span>
-                    <span style={{ fontSize: 11, color: '#94a3b8' }}>{pct}%</span>
-                  </div>
-                  <MiniBar value={pct} color={EMOTION_COLORS[emotion] ?? '#94a3b8'} />
-                </div>
-              ))}
-            </div>
-
-            {/* Integrity signals */}
-            <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: '16px' }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', marginBottom: 14 }}>Integrity Signals</div>
-              <div style={{ textAlign: 'center', padding: '16px 0' }}>
-                <div style={{ width: 80, height: 80, borderRadius: '50%', background: riskColor + '18', border: `3px solid ${riskColor}`, margin: '0 auto 10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <span style={{ fontSize: 18, fontWeight: 700, color: riskColor }}>{selected.deception}%</span>
-                </div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: riskColor }}>{riskLabel}</div>
-                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Deception probability index</div>
+          {/* Detail panel */}
+          <div>
+            {loadingReport ? (
+              <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: 60, display: 'flex', justifyContent: 'center' }}>
+                <Spinner size={24} />
               </div>
-              <div style={{ background: '#f8fafc', borderRadius: 8, padding: '10px 12px', fontSize: 11.5, color: '#475569', lineHeight: 1.6 }}>
-                <strong>AI Note:</strong> {selected.deception >= 15
-                  ? 'Elevated inconsistency in responses detected. Manual review of answers 3, 7, and 11 recommended.'
-                  : selected.deception >= 8
-                  ? 'Minor inconsistencies noted. Standard review recommended before decision.'
-                  : 'No significant integrity concerns detected. Candidate shows consistent and confident responses.'}
+            ) : !report ? (
+              <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: 48, textAlign: 'center' }}>
+                <Sparkles size={36} style={{ color: '#c4b5fd', margin: '0 auto 14px' }} />
+                <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>No sentiment analysis yet</div>
+                <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 18 }}>Run Claude over this candidate's interview transcript to get confidence, engagement, and integrity signals.</div>
+                <Button icon={<Brain size={14} />} onClick={runAnalysis} loading={running}>
+                  {running ? 'Analyzing…' : 'Run Analysis'}
+                </Button>
               </div>
-            </div>
-          </div>
+            ) : (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 14 }}>
+                  {[
+                    { label: 'Confidence', value: report.confidence, color: '#4f46e5', icon: <TrendingUp size={14} /> },
+                    { label: 'Engagement', value: report.engagement, color: '#10b981', icon: <Eye size={14} /> },
+                    { label: 'Clarity', value: report.clarity, color: '#06b6d4', icon: <MessageSquare size={14} /> },
+                    { label: 'Stress Index', value: report.stress, color: '#f59e0b', icon: <Mic size={14} /> },
+                  ].map((m) => (
+                    <div key={m.label} style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: '14px 16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8, color: m.color }}>{m.icon}<span style={{ fontSize: 11, color: '#94a3b8' }}>{m.label}</span></div>
+                      <div style={{ fontSize: 24, fontWeight: 700, color: m.color, marginBottom: 6 }}>{m.value}%</div>
+                      <MiniBar value={m.value} color={m.color} />
+                    </div>
+                  ))}
+                </div>
 
-          {/* Sentiment timeline */}
-          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: '16px', marginTop: 14 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>Sentiment Timeline (per question)</div>
-              <BarChart3 size={15} style={{ color: '#94a3b8' }} />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 80 }}>
-              {selected.sentiment_timeline.map((v, i) => {
-                const max = Math.max(...selected.sentiment_timeline);
-                const h = (v / max) * 72;
-                const c = v >= 80 ? '#10b981' : v >= 60 ? '#4f46e5' : '#f59e0b';
-                return (
-                  <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-                    <div style={{ width: '100%', height: h, background: c, borderRadius: '3px 3px 0 0', opacity: 0.85 }} />
-                    <span style={{ fontSize: 9, color: '#94a3b8' }}>Q{i + 1}</span>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                  <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: '16px' }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', marginBottom: 12 }}>Overall Sentiment</div>
+                    <div style={{ textAlign: 'center', padding: '10px 0' }}>
+                      <div style={{
+                        display: 'inline-block', fontSize: 14, fontWeight: 700, borderRadius: 20, padding: '6px 18px',
+                        background: report.overallSentiment === 'POSITIVE' ? '#ecfdf5' : report.overallSentiment === 'NEGATIVE' ? '#fff1f2' : '#f8fafc',
+                        color: report.overallSentiment === 'POSITIVE' ? '#10b981' : report.overallSentiment === 'NEGATIVE' ? '#f43f5e' : '#64748b',
+                      }}>{report.overallSentiment}</div>
+                    </div>
+                    <div style={{ background: '#f8fafc', borderRadius: 8, padding: '10px 12px', fontSize: 11.5, color: '#475569', lineHeight: 1.6, marginTop: 8 }}>
+                      {report.summary}
+                    </div>
                   </div>
-                );
-              })}
-            </div>
+
+                  <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: '16px' }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', marginBottom: 14 }}>Integrity Signals</div>
+                    <div style={{ textAlign: 'center', padding: '10px 0' }}>
+                      <div style={{ width: 80, height: 80, borderRadius: '50%', background: riskColor + '18', border: `3px solid ${riskColor}`, margin: '0 auto 10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span style={{ fontSize: 18, fontWeight: 700, color: riskColor }}>{report.deceptionScore}%</span>
+                      </div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: riskColor }}>{riskLabel}</div>
+                      <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Deception probability index</div>
+                    </div>
+                  </div>
+                </div>
+
+                {report.emotionTimeline.length > 0 && (
+                  <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: '16px', marginTop: 14 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>Confidence Timeline (per question)</div>
+                      <BarChart3 size={15} style={{ color: '#94a3b8' }} />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 80 }}>
+                      {report.emotionTimeline.map((p, i) => {
+                        const max = Math.max(...report!.emotionTimeline.map((x) => x.confidence), 1);
+                        const h = (p.confidence / max) * 72;
+                        const c = p.confidence >= 80 ? '#10b981' : p.confidence >= 60 ? '#4f46e5' : '#f59e0b';
+                        return (
+                          <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                            <div style={{ width: '100%', height: h, background: c, borderRadius: '3px 3px 0 0', opacity: 0.85 }} />
+                            <span style={{ fontSize: 9, color: '#94a3b8' }}>Q{p.questionIndex + 1}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ marginTop: 14 }}>
+                  <Button variant="secondary" icon={<Brain size={14} />} onClick={runAnalysis} loading={running}>
+                    Re-run Analysis
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -9,6 +9,31 @@ import { AppError } from '../middleware/errorHandler';
 const router = Router();
 router.use(authenticate);
 
+// GET /api/reports — all evaluated reports for this org, ranked by score
+router.get('/', async (req, res, next) => {
+  try {
+    const reports = await prisma.report.findMany({
+      where: {
+        interview: { candidate: { opening: { organizationId: req.user!.organizationId } } },
+      },
+      orderBy: { overallScore: 'desc' },
+      include: {
+        interview: {
+          select: {
+            id: true,
+            status: true,
+            candidate: { select: { id: true, name: true, opening: { select: { title: true } } } },
+          },
+        },
+      },
+    });
+
+    res.json({ success: true, reports });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/reports/:interviewId
 router.get('/:interviewId', async (req, res, next) => {
   try {

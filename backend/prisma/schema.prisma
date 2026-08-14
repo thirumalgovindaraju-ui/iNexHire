@@ -59,6 +59,7 @@ model Organization {
   talentPoolEntries TalentPoolEntry[]
   auditLogs         AuditLog[]
   integrations      Integration[]
+  notifications     Notification[]
 
   @@map("organizations")
 }
@@ -77,6 +78,8 @@ model User {
   organization Organization @relation(fields: [organizationId], references: [id])
   openings     Opening[]
   refreshTokens RefreshToken[]
+  auditLogs     AuditLog[]
+  notifications Notification[]
 
   @@map("users")
 }
@@ -114,6 +117,7 @@ model Opening {
   questions    Question[]
   candidates   Candidate[]
   biasAudit    BiasAudit?
+  chatSessions ChatSession[]
 
   @@map("openings")
 }
@@ -149,6 +153,7 @@ model Candidate {
   interviews      Interview[]
   offerLetters    OfferLetter[]
   talentPoolEntry TalentPoolEntry?
+  chatSessions    ChatSession[]
 
   @@unique([email, openingId])
   @@map("candidates")
@@ -166,11 +171,14 @@ model Interview {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  candidate    Candidate    @relation(fields: [candidateId], references: [id])
-  responses    Response[]
-  report       Report?
-  proctorLogs  ProctorLog[]
-  offerLetters OfferLetter[]
+  candidate           Candidate            @relation(fields: [candidateId], references: [id])
+  responses           Response[]
+  report              Report?
+  proctorLogs         ProctorLog[]
+  offerLetters        OfferLetter[]
+  sentimentReport      SentimentReport?
+  cultureFitScore      CultureFitScore?
+  retentionPrediction  RetentionPrediction?
 
   @@map("interviews")
 }
@@ -295,9 +303,102 @@ model AuditLog {
   createdAt DateTime @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id])
+  user         User?        @relation(fields: [userId], references: [id])
 
   @@index([organizationId, createdAt])
   @@map("audit_logs")
+}
+
+// ─── AI Enterprise Modules ─────────────────────────────────────────────────────
+
+model SentimentReport {
+  id               String   @id @default(cuid())
+  interviewId      String   @unique
+  confidence       Int      // 0-100
+  engagement       Int      // 0-100
+  clarity          Int      // 0-100
+  stress           Int      // 0-100
+  deceptionScore   Int      // 0-100
+  overallSentiment String   // POSITIVE | NEUTRAL | NEGATIVE
+  emotionTimeline  Json     // [{questionIndex, confidence, engagement, clarity, stress}]
+  summary          String   @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  interview Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  @@map("sentiment_reports")
+}
+
+model CultureFitScore {
+  id             String   @id @default(cuid())
+  interviewId    String   @unique
+  overall        Int      // 0-100
+  dimensions     Json     // { [dimensionName]: { score: number, evidence: string } }
+  summary        String   @db.Text
+  recommendation String   // STRONG_FIT | FIT | NEUTRAL | POOR_FIT
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  interview Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  @@map("culture_fit_scores")
+}
+
+model RetentionPrediction {
+  id              String   @id @default(cuid())
+  interviewId     String   @unique
+  retentionScore  Int      // 0-100
+  flightRisk      String   // LOW | MEDIUM | HIGH
+  riskFactors     Json     // [{ factor, severity, mitigation }]
+  positiveFactors Json     // [string]
+  predictedTenure String   // e.g. "2-3 years"
+  summary         String   @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  interview Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  @@map("retention_predictions")
+}
+
+model ChatSession {
+  id          String   @id @default(cuid())
+  candidateId String
+  openingId   String
+  messages    Json     // [{ role: 'user'|'assistant', content, timestamp }]
+  status      String   @default("active") // active | closed
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  opening   Opening   @relation(fields: [openingId], references: [id])
+
+  @@map("chat_sessions")
+}
+
+model Notification {
+  id             String   @id @default(cuid())
+  userId         String
+  organizationId String
+  type           String   // INTERVIEW_COMPLETED | REPORT_READY | OFFER_SENT | BIAS_FLAG
+  title          String
+  message        String
+  resourceType   String   // INTERVIEW | OPENING | CANDIDATE | OFFER
+  resourceId     String
+  read           Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@map("notifications")
 }
 
 model Integration {

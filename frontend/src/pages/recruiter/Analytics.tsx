@@ -86,19 +86,22 @@ export default function Analytics() {
         </div>
       </div>
 
-      {/* KPI row */}
+      {/* KPI row — first three from live /api/dashboard data, last two are illustrative (no cost/time-to-hire tracking in the backend yet) */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12, marginBottom: 20 }}>
-        <StatCard label="Total Openings" value={data?.metrics?.totalOpenings ?? 0} trend={12} color="#4f46e5" icon={<BarChart3 size={15} />} />
-        <StatCard label="Total Candidates" value={data?.metrics?.totalCandidates ?? 0} trend={18} color="#7c3aed" icon={<Users size={15} />} />
-        <StatCard label="Completion Rate" value={`${data?.metrics?.completionRate ?? 0}%`} trend={4} color="#10b981" icon={<TrendingUp size={15} />} sub="vs 85% last period" />
-        <StatCard label="Avg Time to Hire" value="8.2d" trend={-28} color="#f59e0b" icon={<Clock size={15} />} sub="down from 11.4d" />
-        <StatCard label="Cost per Hire" value="₹4,200" trend={-35} color="#f43f5e" icon={<DollarSign size={15} />} sub="down from ₹6,500" />
+        <StatCard label="Total Openings" value={data?.metrics?.totalOpenings ?? 0} color="#4f46e5" icon={<BarChart3 size={15} />} />
+        <StatCard label="Total Candidates" value={data?.metrics?.totalCandidates ?? 0} color="#7c3aed" icon={<Users size={15} />} />
+        <StatCard label="Completion Rate" value={`${data?.metrics?.completionRate ?? 0}%`} color="#10b981" icon={<TrendingUp size={15} />} />
+        <StatCard label="Avg Time to Hire" value="8.2d" color="#f59e0b" icon={<Clock size={15} />} sub="Sample data" />
+        <StatCard label="Cost per Hire" value="₹4,200" color="#f43f5e" icon={<DollarSign size={15} />} sub="Sample data" />
       </div>
 
-      {/* Row 1: Funnel + Pie */}
+      {/* Row 1: Funnel + Pie — funnel is illustrative; pie is real recommendation-count data */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
         <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: '18px' }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', marginBottom: 16 }}>Hiring Funnel (Conversion)</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>Hiring Funnel (Conversion)</span>
+            <span style={{ fontSize: 9, background: '#f1f5f9', color: '#94a3b8', borderRadius: 4, padding: '2px 6px', fontWeight: 500 }}>SAMPLE DATA</span>
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {FUNNEL_DATA.map((f, i) => {
               const prev = i > 0 ? FUNNEL_DATA[i-1].value : f.value;
@@ -153,7 +156,10 @@ export default function Analytics() {
       {/* Row 2: Weekly trend + Time to hire */}
       <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 14, marginBottom: 14 }}>
         <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: '18px' }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', marginBottom: 16 }}>Weekly Interview Volume & Score Trend</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>Weekly Interview Volume & Score Trend</span>
+            <span style={{ fontSize: 9, background: '#f1f5f9', color: '#94a3b8', borderRadius: 4, padding: '2px 6px', fontWeight: 500 }}>SAMPLE DATA</span>
+          </div>
           <ResponsiveContainer width="100%" height={220}>
             <AreaChart data={TREND_DATA}>
               <defs>
@@ -174,7 +180,10 @@ export default function Analytics() {
         </div>
 
         <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: '18px' }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', marginBottom: 16 }}>Time to Hire Trend (Days)</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>Time to Hire Trend (Days)</span>
+            <span style={{ fontSize: 9, background: '#f1f5f9', color: '#94a3b8', borderRadius: 4, padding: '2px 6px', fontWeight: 500 }}>SAMPLE DATA</span>
+          </div>
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={TIME_DATA}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
@@ -189,7 +198,10 @@ export default function Analytics() {
 
       {/* Row 3: Department breakdown */}
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: '18px', marginBottom: 14 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', marginBottom: 16 }}>Performance by Department</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>Performance by Department</span>
+          <span style={{ fontSize: 9, background: '#f1f5f9', color: '#94a3b8', borderRadius: 4, padding: '2px 6px', fontWeight: 500 }}>SAMPLE DATA</span>
+        </div>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr>
@@ -220,8 +232,9 @@ export default function Analytics() {
         </table>
       </div>
 
-      {/* Cost savings */}
-      <div style={{ background: 'linear-gradient(135deg,#0f172a,#1e1b4b)', borderRadius: 12, padding: '24px 28px', display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 20 }}>
+      {/* Cost savings — illustrative, no cost-tracking backend yet */}
+      <div style={{ background: 'linear-gradient(135deg,#0f172a,#1e1b4b)', borderRadius: 12, padding: '24px 28px', display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 20, position: 'relative' }}>
+        <span style={{ position: 'absolute', top: 12, right: 16, fontSize: 9, background: 'rgba(255,255,255,0.12)', color: '#c7d2fe', borderRadius: 4, padding: '2px 6px', fontWeight: 500 }}>SAMPLE DATA</span>
         <div>
           <div style={{ fontSize: 11, color: '#818cf8', fontWeight: 500, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.05em' }}>Cost Savings</div>
           <div style={{ fontSize: 28, fontWeight: 700, color: '#fff', marginBottom: 4 }}>₹18.4L</div>

@@ -1,187 +1,237 @@
-// src/pages/recruiter/PredictiveRetention.tsx — NEW: Predictive Retention AI
-import { useState } from 'react';
-import { TrendingUp, AlertTriangle, CheckCircle, Brain, Target, BookOpen, ChevronRight } from 'lucide-react';
+// src/pages/recruiter/PredictiveRetention.tsx — wired to real backend
+import { useState, useEffect, useCallback } from 'react';
+import { TrendingUp, AlertTriangle, CheckCircle, Brain, Sparkles } from 'lucide-react';
+import { Button, Spinner } from '../../components/ui';
+import { apiClient, reportsApi } from '../../services/api';
 
-const CANDIDATES = [
-  {
-    name: 'Arjun Kapoor', role: 'Sr. Backend Eng.', retentionScore: 91,
-    riskLevel: 'low', prediction: '18+ months',
-    factors: [
-      { label: 'Career growth alignment', score: 94, positive: true },
-      { label: 'Salary satisfaction', score: 88, positive: true },
-      { label: 'Culture fit', score: 91, positive: true },
-      { label: 'Commute/remote preference', score: 82, positive: true },
-      { label: 'Team dynamics match', score: 90, positive: true },
-    ],
-    skillGaps: ['Kubernetes', 'Go lang'],
-    learningPath: ['AWS Certified Solutions Architect', 'System Design Masterclass'],
-  },
-  {
-    name: 'Priya Venkat', role: 'Product Manager', retentionScore: 72,
-    riskLevel: 'medium', prediction: '10–14 months',
-    factors: [
-      { label: 'Career growth alignment', score: 78, positive: true },
-      { label: 'Salary satisfaction', score: 65, positive: false },
-      { label: 'Culture fit', score: 84, positive: true },
-      { label: 'Commute/remote preference', score: 58, positive: false },
-      { label: 'Team dynamics match', score: 75, positive: true },
-    ],
-    skillGaps: ['SQL Advanced', 'Data Analytics'],
-    learningPath: ['Product Analytics with Amplitude', 'SQL for PMs'],
-  },
-  {
-    name: 'Marcus Reed', role: 'Sr. Backend Eng.', retentionScore: 44,
-    riskLevel: 'high', prediction: '4–7 months',
-    factors: [
-      { label: 'Career growth alignment', score: 42, positive: false },
-      { label: 'Salary satisfaction', score: 38, positive: false },
-      { label: 'Culture fit', score: 65, positive: true },
-      { label: 'Commute/remote preference', score: 55, positive: false },
-      { label: 'Team dynamics match', score: 48, positive: false },
-    ],
-    skillGaps: ['React', 'TypeScript', 'GraphQL'],
-    learningPath: ['React Advanced Patterns', 'TypeScript Deep Dive'],
-  },
-];
+interface CandidateOption {
+  interviewId: string;
+  candidateName: string;
+  openingTitle: string;
+  overallScore: number;
+}
 
-const RISK_COLORS: Record<string, [string, string, string]> = {
-  low: ['#ecfdf5', '#10b981', 'Low Risk'],
-  medium: ['#fffbeb', '#f59e0b', 'Medium Risk'],
-  high: ['#fff1f2', '#f43f5e', 'High Risk'],
+interface RiskFactor {
+  factor: string;
+  severity: 'high' | 'medium' | 'low';
+  mitigation: string;
+}
+
+interface RetentionPrediction {
+  retentionScore: number;
+  flightRisk: 'LOW' | 'MEDIUM' | 'HIGH';
+  riskFactors: RiskFactor[];
+  positiveFactors: string[];
+  predictedTenure: string;
+  summary: string;
+}
+
+const RISK_COLORS: Record<string, [string, string]> = {
+  LOW: ['#ecfdf5', '#10b981'],
+  MEDIUM: ['#fffbeb', '#f59e0b'],
+  HIGH: ['#fff1f2', '#f43f5e'],
+};
+
+const SEVERITY_COLORS: Record<string, [string, string]> = {
+  high: ['#fff1f2', '#f43f5e'],
+  medium: ['#fffbeb', '#f59e0b'],
+  low: ['#f0fdf4', '#10b981'],
 };
 
 export default function PredictiveRetention() {
-  const [selected, setSelected] = useState(CANDIDATES[0]);
+  const [candidates, setCandidates] = useState<CandidateOption[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [prediction, setPrediction] = useState<RetentionPrediction | null>(null);
+  const [loadingList, setLoadingList] = useState(true);
+  const [loadingPrediction, setLoadingPrediction] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [salaryRange, setSalaryRange] = useState('');
+
+  useEffect(() => {
+    reportsApi.list()
+      .then((reports: any[]) => {
+        const opts: CandidateOption[] = reports.map((r) => ({
+          interviewId: r.interview.id,
+          candidateName: r.interview.candidate.name,
+          openingTitle: r.interview.candidate.opening.title,
+          overallScore: r.overallScore,
+        }));
+        setCandidates(opts);
+        if (opts.length > 0) setSelectedId(opts[0].interviewId);
+      })
+      .catch((err: any) => setError(err?.response?.data?.error ?? 'Failed to load evaluated interviews'))
+      .finally(() => setLoadingList(false));
+  }, []);
+
+  const fetchPrediction = useCallback(async (interviewId: string) => {
+    try {
+      setLoadingPrediction(true);
+      setError(null);
+      const { data } = await apiClient.get(`/retention/${interviewId}`);
+      setPrediction(data.prediction ?? null);
+    } catch (err: any) {
+      setError(err?.response?.data?.error ?? 'Failed to load retention prediction');
+    } finally {
+      setLoadingPrediction(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedId) fetchPrediction(selectedId);
+  }, [selectedId, fetchPrediction]);
+
+  async function runAnalysis() {
+    if (!selectedId) return;
+    try {
+      setRunning(true);
+      setError(null);
+      const { data } = await apiClient.post(`/retention/${selectedId}`, salaryRange ? { salaryRange } : {});
+      setPrediction(data.prediction);
+    } catch (err: any) {
+      setError(err?.response?.data?.error ?? 'Prediction failed');
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  const [riskBg, riskColor] = RISK_COLORS[prediction?.flightRisk ?? 'MEDIUM'];
+
+  if (loadingList) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300 }}>
+        <Spinner size={28} />
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: '24px 28px', maxWidth: 1200, margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: '#0f172a', marginBottom: 3 }}>Predictive Retention AI</h1>
-          <p style={{ fontSize: 13, color: '#94a3b8' }}>Forecasts 90-day+ post-hire retention, skill gaps, and personalized learning paths</p>
+          <p style={{ fontSize: 13, color: '#94a3b8' }}>Claude forecasts flight risk and retention from the candidate's interview transcript</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f5f3ff', border: '1px solid #c4b5fd', borderRadius: 9, padding: '8px 16px' }}>
           <Brain size={15} style={{ color: '#7c3aed' }} />
-          <span style={{ fontSize: 12, color: '#5b21b6', fontWeight: 500 }}>Powered by NexHire PredictIQ™</span>
+          <span style={{ fontSize: 12, color: '#5b21b6', fontWeight: 500 }}>Powered by Claude</span>
         </div>
       </div>
 
-      {/* Summary cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 20 }}>
-        {[
-          { label: 'Avg Retention Score', value: '69%', sub: 'across evaluated candidates', color: '#4f46e5', bg: '#eef2ff', icon: <TrendingUp size={16} /> },
-          { label: 'High Retention (>80%)', value: '3', sub: 'candidates predicted to stay 12+ months', color: '#10b981', bg: '#ecfdf5', icon: <CheckCircle size={16} /> },
-          { label: 'At-Risk Hires', value: '1', sub: 'below 50% — compensation review needed', color: '#f43f5e', bg: '#fff1f2', icon: <AlertTriangle size={16} /> },
-        ].map(c => (
-          <div key={c.label} style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: '16px 18px' }}>
-            <div style={{ width: 34, height: 34, borderRadius: 9, background: c.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: c.color, marginBottom: 10 }}>{c.icon}</div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: c.color, marginBottom: 3 }}>{c.value}</div>
-            <div style={{ fontSize: 11.5, fontWeight: 600, color: '#0f172a', marginBottom: 2 }}>{c.label}</div>
-            <div style={{ fontSize: 11, color: '#94a3b8' }}>{c.sub}</div>
-          </div>
-        ))}
-      </div>
+      {error && (
+        <div style={{ background: '#fff1f2', border: '1px solid #fecdd3', borderRadius: 8, padding: '10px 14px', color: '#f43f5e', fontSize: 13, marginBottom: 16 }}>
+          {error}
+        </div>
+      )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 16 }}>
-        {/* Candidate list */}
-        <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0' }}>
-          <div style={{ padding: '14px 16px', borderBottom: '1px solid #e2e8f0', fontSize: 13, fontWeight: 600, color: '#0f172a' }}>Evaluated Candidates</div>
-          {CANDIDATES.map(c => {
-            const [bg, color, label] = RISK_COLORS[c.riskLevel];
-            const isActive = selected.name === c.name;
-            return (
-              <div key={c.name} onClick={() => setSelected(c)} style={{
-                padding: '12px 16px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9',
-                background: isActive ? '#fafafe' : 'transparent',
-                borderLeft: isActive ? '3px solid #4f46e5' : '3px solid transparent',
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+      {candidates.length === 0 ? (
+        <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: 40, textAlign: 'center' }}>
+          <TrendingUp size={40} style={{ color: '#cbd5e1', margin: '0 auto 12px' }} />
+          <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>No evaluated interviews yet</div>
+          <div style={{ fontSize: 13, color: '#94a3b8' }}>Once a candidate completes an interview and is scored, it'll show up here for retention prediction.</div>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 16 }}>
+          <div>
+            <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', marginBottom: 12 }}>
+              <div style={{ padding: '14px 16px', borderBottom: '1px solid #e2e8f0', fontSize: 13, fontWeight: 600, color: '#0f172a' }}>Context (optional)</div>
+              <div style={{ padding: '14px 16px' }}>
+                <label style={{ fontSize: 11, fontWeight: 500, color: '#64748b', marginBottom: 4, display: 'block' }}>Salary Range Offered</label>
+                <input
+                  value={salaryRange}
+                  onChange={(e) => setSalaryRange(e.target.value)}
+                  placeholder="e.g. ₹18-24 LPA"
+                  style={{ width: '100%', border: '1px solid #e2e8f0', borderRadius: 8, padding: '7px 10px', fontSize: 12.5, outline: 'none' }}
+                />
+              </div>
+            </div>
+
+            <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0' }}>
+              <div style={{ padding: '14px 16px', borderBottom: '1px solid #e2e8f0', fontSize: 13, fontWeight: 600, color: '#0f172a' }}>Evaluated Interviews</div>
+              {candidates.map((c) => (
+                <div key={c.interviewId} onClick={() => setSelectedId(c.interviewId)} style={{
+                  padding: '12px 16px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9',
+                  background: selectedId === c.interviewId ? '#fafafe' : 'transparent',
+                  borderLeft: selectedId === c.interviewId ? '3px solid #4f46e5' : '3px solid transparent',
+                }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{c.candidateName}</div>
+                  <div style={{ fontSize: 11, color: '#94a3b8' }}>{c.openingTitle}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0' }}>
+            {loadingPrediction ? (
+              <div style={{ padding: 60, display: 'flex', justifyContent: 'center' }}><Spinner size={24} /></div>
+            ) : !prediction ? (
+              <div style={{ padding: 48, textAlign: 'center' }}>
+                <Sparkles size={36} style={{ color: '#c4b5fd', margin: '0 auto 14px' }} />
+                <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>No retention prediction yet</div>
+                <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 18 }}>Run Claude over this candidate's transcript to forecast flight risk and retention.</div>
+                <Button icon={<TrendingUp size={14} />} onClick={runAnalysis} loading={running}>
+                  {running ? 'Predicting…' : 'Run Analysis'}
+                </Button>
+              </div>
+            ) : (
+              <div style={{ padding: '18px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{c.name}</div>
-                    <div style={{ fontSize: 11, color: '#94a3b8' }}>{c.role}</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>Retention Forecast</div>
+                    <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>Predicted tenure: {prediction.predictedTenure}</div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: c.retentionScore >= 80 ? '#10b981' : c.retentionScore >= 60 ? '#f59e0b' : '#f43f5e' }}>{c.retentionScore}%</div>
+                    <div style={{ fontSize: 30, fontWeight: 700, color: prediction.retentionScore >= 80 ? '#10b981' : prediction.retentionScore >= 60 ? '#f59e0b' : '#f43f5e' }}>{prediction.retentionScore}%</div>
+                    <span style={{ fontSize: 10, background: riskBg, color: riskColor, borderRadius: 6, padding: '2px 8px', fontWeight: 500 }}>{prediction.flightRisk} RISK</span>
                   </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 10, background: bg, color, borderRadius: 6, padding: '2px 8px', fontWeight: 500 }}>{label}</span>
-                  <span style={{ fontSize: 10, color: '#94a3b8' }}>~{c.prediction}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
 
-        {/* Detail */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {/* Retention breakdown */}
-          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: '18px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{selected.name} — Retention Factors</div>
-                <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>Predicted tenure: {selected.prediction}</div>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: 30, fontWeight: 700, color: selected.retentionScore >= 80 ? '#10b981' : selected.retentionScore >= 60 ? '#f59e0b' : '#f43f5e' }}>{selected.retentionScore}%</div>
-                <div style={{ fontSize: 10, color: '#94a3b8' }}>Retention Score</div>
-              </div>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {selected.factors.map(f => (
-                <div key={f.label}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                      <span style={{ fontSize: 12, color: f.positive ? '#10b981' : '#f43f5e' }}>{f.positive ? '▲' : '▼'}</span>
-                      <span style={{ fontSize: 12.5, color: '#334155' }}>{f.label}</span>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+                  <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                      <AlertTriangle size={13} style={{ color: '#f59e0b' }} />
+                      <span style={{ fontSize: 12.5, fontWeight: 600, color: '#0f172a' }}>Risk Factors</span>
                     </div>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: f.score >= 70 ? '#10b981' : f.score >= 50 ? '#f59e0b' : '#f43f5e' }}>{f.score}%</span>
+                    {prediction.riskFactors.length === 0 ? (
+                      <div style={{ fontSize: 12, color: '#94a3b8' }}>No significant risk factors identified.</div>
+                    ) : prediction.riskFactors.map((f, i) => {
+                      const [bg, color] = SEVERITY_COLORS[f.severity] ?? SEVERITY_COLORS.medium;
+                      return (
+                        <div key={i} style={{ background: bg, borderRadius: 8, padding: '8px 10px', marginBottom: 6 }}>
+                          <div style={{ fontSize: 12, fontWeight: 500, color }}>{f.factor}</div>
+                          <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{f.mitigation}</div>
+                        </div>
+                      );
+                    })}
                   </div>
-                  <div style={{ height: 5, background: '#f1f5f9', borderRadius: 3, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${f.score}%`, background: f.score >= 70 ? '#10b981' : f.score >= 50 ? '#f59e0b' : '#f43f5e', borderRadius: 3, transition: 'width .6s ease' }} />
+
+                  <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                      <CheckCircle size={13} style={{ color: '#10b981' }} />
+                      <span style={{ fontSize: 12.5, fontWeight: 600, color: '#0f172a' }}>Positive Factors</span>
+                    </div>
+                    {prediction.positiveFactors.length === 0 ? (
+                      <div style={{ fontSize: 12, color: '#94a3b8' }}>None identified.</div>
+                    ) : prediction.positiveFactors.map((f, i) => (
+                      <div key={i} style={{ background: '#f0fdf4', borderRadius: 8, padding: '8px 10px', marginBottom: 6, fontSize: 12, color: '#065f46' }}>
+                        {f}
+                      </div>
+                    ))}
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-            {/* Skill gaps */}
-            <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                <Target size={14} style={{ color: '#f59e0b' }} />
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>Skill Gaps Detected</span>
-              </div>
-              {selected.skillGaps.map(s => (
-                <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, marginBottom: 6 }}>
-                  <AlertTriangle size={12} style={{ color: '#f59e0b', flexShrink: 0 }} />
-                  <span style={{ fontSize: 12.5, color: '#92400e', fontWeight: 500 }}>{s}</span>
+                <div style={{ background: '#f8fafc', borderRadius: 8, padding: '10px 12px', fontSize: 11.5, color: '#475569', lineHeight: 1.6, marginBottom: 16 }}>
+                  {prediction.summary}
                 </div>
-              ))}
-              {selected.riskLevel === 'high' && (
-                <div style={{ marginTop: 8, fontSize: 11.5, color: '#f43f5e', background: '#fff1f2', borderRadius: 8, padding: '8px 10px', border: '1px solid #fecaca' }}>
-                  ⚠ Compensation below market rate — renegotiation may reduce churn risk
-                </div>
-              )}
-            </div>
 
-            {/* Learning path */}
-            <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                <BookOpen size={14} style={{ color: '#4f46e5' }} />
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>AI Learning Path</span>
+                <Button variant="secondary" icon={<TrendingUp size={14} />} onClick={runAnalysis} loading={running}>
+                  Re-run Analysis
+                </Button>
               </div>
-              {selected.learningPath.map((l, i) => (
-                <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: 8, marginBottom: 6, cursor: 'pointer' }}>
-                  <span style={{ width: 20, height: 20, borderRadius: '50%', background: '#4f46e5', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{i + 1}</span>
-                  <span style={{ fontSize: 12, color: '#3730a3', fontWeight: 500, flex: 1 }}>{l}</span>
-                  <ChevronRight size={12} style={{ color: '#818cf8' }} />
-                </div>
-              ))}
-            </div>
+            )}
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -2,10 +2,10 @@
 // Adaptive follow-up question engine
 // Called after each candidate response to decide: continue or ask a follow-up
 
-import OpenAI from 'openai';
-import { env } from '../config/env';
+import Anthropic from '@anthropic-ai/sdk';
 
-const openai = new OpenAI({ apiKey: env.openaiApiKey });
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const CLAUDE_MODEL = 'claude-sonnet-4-6';
 
 export interface AdaptiveDecision {
   action: 'follow_up' | 'next_question' | 'complete';
@@ -57,16 +57,17 @@ Guidelines:
 - Don't follow up if the candidate clearly doesn't know`;
 
   try {
-    const res = await openai.chat.completions.create({
-      model: env.openaiModel,
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0,
+    const res = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
       max_tokens: 200,
+      temperature: 0,
+      messages: [{ role: 'user', content: prompt }],
     });
-    const content = res.choices[0].message.content ?? '{}';
+    const content = res.content[0].type === 'text' ? res.content[0].text : '{}';
     const cleaned = content.replace(/```json|```/g, '').trim();
     return JSON.parse(cleaned);
-  } catch {
+  } catch (err) {
+    console.error('[adaptive.service] getAdaptiveDecision failed:', err);
     return { action: 'next_question', reason: 'Adaptive engine error — skipping follow-up' };
   }
 }

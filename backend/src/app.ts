@@ -17,6 +17,15 @@ import uploadRoutes from './routes/upload.routes';
 import adaptiveRoutes from './routes/adaptive.routes';
 import complianceRoutes from './routes/compliance.routes';
 import offerRoutes from './routes/offer.routes';
+import sentimentRoutes from './routes/sentiment.routes';
+import cultureFitRoutes from './routes/culturefit.routes';
+import retentionRoutes from './routes/retention.routes';
+import chatbotRoutes from './routes/chatbot.routes';
+import rankingRoutes from './routes/ranking.routes';
+import talentPoolRoutes from './routes/talentpool.routes';
+import analyticsRoutes from './routes/analytics.routes';
+import notificationsRoutes from './routes/notifications.routes';
+import auditLogRoutes from './routes/auditlog.routes';
 
 export function createApp() {
   const app = express();
@@ -66,6 +75,15 @@ export function createApp() {
   app.use('/api/upload', uploadRoutes);
   app.use('/api/compliance', complianceRoutes);
   app.use('/api/offers', offerRoutes);
+  app.use('/api/sentiment', sentimentRoutes);
+  app.use('/api/culture-fit', cultureFitRoutes);
+  app.use('/api/retention', retentionRoutes);
+  app.use('/api/chatbot', chatbotRoutes);
+  app.use('/api/ranking', rankingRoutes);
+  app.use('/api/talent-pool', talentPoolRoutes);
+  app.use('/api/analytics', analyticsRoutes);
+  app.use('/api/notifications', notificationsRoutes);
+  app.use('/api/audit-logs', auditLogRoutes);
 
   // ─── 404 ───────────────────────────────────────────────────────────────────
   app.use((_req, res) => {

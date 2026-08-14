@@ -24,7 +24,7 @@ export const env = {
   jwtExpiresIn: optional('JWT_EXPIRES_IN', '15m'),
   refreshTokenExpiresIn: optional('REFRESH_TOKEN_EXPIRES_IN', '7d'),
 
-  openaiApiKey: required('OPENAI_API_KEY'),
+  openaiApiKey: optional('OPENAI_API_KEY', ''),
   openaiModel: optional('OPENAI_MODEL', 'gpt-4o-mini'),
 
   appUrl: optional('APP_URL', 'http://localhost:5173'),
@@ -39,3 +39,7 @@ export const env = {
 
   inviteExpiryDays: parseInt(optional('INVITE_EXPIRY_DAYS', '7')),
 };
+
+if (!env.openaiApiKey) {
+  console.warn('[env] OPENAI_API_KEY not set — Whisper STT will be unavailable. All other AI features run on Anthropic and are unaffected.');
+}
