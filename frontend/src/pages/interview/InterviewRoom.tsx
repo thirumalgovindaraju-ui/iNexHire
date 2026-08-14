@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Mic, MicOff, SkipForward, ChevronRight, Clock, CheckCircle } from 'lucide-react';
-import { interviewsApi, extractError } from '../../services/api';
+import { interviewsApi, uploadApi, extractError } from '../../services/api';
 import { useInterviewStore } from '../../store/interviewStore';
 import { useProctoring } from '../../hooks/useProctoring';
 import { Button, Spinner } from '../../components/ui';
@@ -331,6 +331,22 @@ export default function InterviewRoom() {
     });
   }
 
+  // Uploads the recorded audio and attaches it to the already-submitted response.
+  // Deliberately not awaited by callers — the transcript is what gets scored, the
+  // recording is supplementary evidence, so the candidate should never be blocked
+  // waiting for this (audio uploads are much larger and slower than the transcript).
+  async function uploadAudioInBackground(interviewId: string, questionId: string, blob: Blob) {
+    try {
+      console.log('[InterviewRoom] background audio upload starting for question', questionId, 'size =', blob.size);
+      const url = await uploadApi.audio(blob, interviewId, questionId);
+      console.log('[InterviewRoom] background audio upload complete, attaching audioUrl for question', questionId);
+      await interviewsApi.submitResponse(interviewId, { questionId, audioUrl: url });
+      console.log('[InterviewRoom] audioUrl attached for question', questionId);
+    } catch (err) {
+      console.warn('[InterviewRoom] background audio upload failed for question', questionId, '— transcript was already submitted, so this is non-fatal:', err);
+    }
+  }
+
   async function advanceAfterSubmit(questionId: string) {
     markSubmitted(questionId);
     setTranscript('');
@@ -349,9 +365,16 @@ export default function InterviewRoom() {
     setSubmitting(true);
     setError('');
     try {
-      if (isRecording) await stopRecording();
+      let audioBlob: Blob | null = null;
+      if (isRecording) audioBlob = await stopRecording();
 
       const answerTranscript = skip ? undefined : transcript || undefined;
+
+      // Kick off the audio upload now but never await it here — it runs in the
+      // background while the transcript submission (below) proceeds immediately.
+      if (!skip && audioBlob && audioBlob.size > 0) {
+        uploadAudioInBackground(session.interviewId, q.id, audioBlob);
+      }
 
       try {
         console.log('[InterviewRoom] submitting response for question', q.id);
