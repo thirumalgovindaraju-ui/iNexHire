@@ -29,8 +29,14 @@ import auditLogRoutes from './routes/auditlog.routes';
 import templatesRoutes from './routes/templates.routes';
 import epfoRoutes from './routes/epfo.routes';
 import linkedinRoutes from './routes/integrations/linkedin.routes';
+import naukriRoutes from './routes/integrations/naukri.routes';
 import liveVideoRoutes from './routes/livevideo.routes';
 import proctoringRoutes from './routes/proctoring.routes';
+import whatsappRoutes from './routes/whatsapp.routes';
+import codingRoutes from './routes/coding.routes';
+import groupDiscussionRoutes from './routes/groupdiscussion.routes';
+import highlightsRoutes from './routes/highlights.routes';
+import compensationRoutes from './routes/compensation.routes';
 
 export function createApp() {
   const app = express();
@@ -92,8 +98,14 @@ export function createApp() {
   app.use('/api/templates', templatesRoutes);
   app.use('/api/epfo', epfoRoutes);
   app.use('/api/integrations/linkedin', linkedinRoutes);
+  app.use('/api/integrations/naukri', naukriRoutes);
   app.use('/api/live-video', liveVideoRoutes);
   app.use('/api/proctoring', proctoringRoutes);
+  app.use('/api/whatsapp', whatsappRoutes);
+  app.use('/api/coding', codingRoutes);
+  app.use('/api/gd', groupDiscussionRoutes);
+  app.use('/api/highlights', highlightsRoutes);
+  app.use('/api/compensation', compensationRoutes);
 
   // ─── 404 ───────────────────────────────────────────────────────────────────
   app.use((_req, res) => {

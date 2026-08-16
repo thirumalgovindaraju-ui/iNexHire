@@ -109,6 +109,8 @@ router.get('/start/:token', async (req, res, next) => {
         type: q.type,
         timeLimit: q.timeLimit,
         order: q.order,
+        isCoding: q.isCoding,
+        testCases: q.testCases,
         answered: answeredQuestionIds.includes(q.id),
       })),
       totalQuestions: interview.candidate.opening.questions.length,

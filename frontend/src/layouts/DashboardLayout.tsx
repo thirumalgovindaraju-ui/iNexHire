@@ -1,6 +1,6 @@
 // src/layouts/DashboardLayout.tsx — NexHire v3 Final
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Briefcase, Users, BarChart2, LogOut, Bell, Search, Shield, FileText, Zap, Clock, Settings, Database, GitBranch, Brain, Heart, Trophy, ClipboardList, Palette, MessageSquare, Play, Globe, AlertTriangle, UserCog, MessageCircle, TrendingUp, Key, LayoutTemplate, ShieldCheck, Video } from 'lucide-react';
+import { LayoutDashboard, Briefcase, Users, BarChart2, LogOut, Bell, Search, Shield, FileText, Zap, Clock, Settings, Database, GitBranch, Brain, Heart, Trophy, ClipboardList, Palette, MessageSquare, Play, Globe, AlertTriangle, UserCog, MessageCircle, TrendingUp, Key, LayoutTemplate, ShieldCheck, Video, Smartphone, IndianRupee } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { authApi } from '../services/api';
 import { useState } from 'react';
@@ -21,6 +21,7 @@ const NAV = [
     { to: '/culture-fit', icon: Heart, label: 'Culture Fit', badge: 'NEW' },
     { to: '/retention', icon: TrendingUp, label: 'Predictive Retention', badge: 'NEW' },
     { to: '/video-highlights', icon: Play, label: 'Video Highlights', badge: 'NEW' },
+    { to: '/group-discussion', icon: Users, label: 'Group Discussion', badge: 'NEW' },
     { to: '/panel-review', icon: MessageSquare, label: 'Panel Review' },
     { to: '/scorecards', icon: ClipboardList, label: 'Scorecards' },
     { to: '/mockmate', icon: Zap, label: 'MockMate Prep' },
@@ -31,6 +32,8 @@ const NAV = [
     { to: '/epfo-verification', icon: ShieldCheck, label: 'EPFO Verification', badge: 'SIM' },
     { to: '/offers', icon: FileText, label: 'Offer Letters' },
     { to: '/talent-pool', icon: Database, label: 'Talent Pool' },
+    { to: '/whatsapp', icon: Smartphone, label: 'WhatsApp Center', badge: 'NEW' },
+    { to: '/compensation', icon: IndianRupee, label: 'Compensation Benchmark', badge: 'NEW' },
     { to: '/languages', icon: Globe, label: 'Multilingual' },
     { to: '/integrations', icon: Zap, label: 'Integrations', adminOnly: true },
     { to: '/branding', icon: Palette, label: 'White-label' },

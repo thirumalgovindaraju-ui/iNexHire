@@ -558,14 +558,15 @@ export default function InterviewRoom() {
                   onClick={isRecording ? stopRecording : startRecording}
                   disabled={submitting || submittedQuestions.has(q.id)}
                   className={clsx(
-                    'w-14 h-14 rounded-full flex items-center justify-center transition-all shadow-lg',
+                    // 64px min tap target on mobile (accessibility guidance for touch targets); 56px on desktop.
+                    'w-16 h-16 lg:w-14 lg:h-14 rounded-full flex items-center justify-center transition-all shadow-lg flex-shrink-0',
                     isRecording
                       ? 'bg-red-500 hover:bg-red-600 animate-pulse'
                       : 'bg-brand-600 hover:bg-brand-700',
                     'disabled:opacity-50 disabled:cursor-not-allowed'
                   )}
                 >
-                  {isRecording ? <MicOff size={24} className="text-white" /> : <Mic size={24} className="text-white" />}
+                  {isRecording ? <MicOff size={26} className="text-white" /> : <Mic size={26} className="text-white" />}
                 </button>
 
                 <Button

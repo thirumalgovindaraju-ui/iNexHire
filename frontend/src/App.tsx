@@ -41,6 +41,10 @@ import Notifications from './pages/recruiter/Notifications';
 // Enterprise v3 continued
 import CandidateChatbot from './pages/recruiter/CandidateChatbot';
 import PredictiveRetention from './pages/recruiter/PredictiveRetention';
+import WhatsAppCenter from './pages/recruiter/WhatsAppCenter';
+import GroupDiscussion from './pages/recruiter/GroupDiscussion';
+import CompensationBenchmark from './pages/recruiter/CompensationBenchmark';
+import GDRoom from './pages/interview/GDRoom';
 // Settings
 import TeamRoles from './pages/settings/TeamRoles';
 import SSOSettings from './pages/settings/SSOSettings';
@@ -51,6 +55,7 @@ import InterviewComplete from './pages/interview/InterviewComplete';
 import IdentityVerify from './pages/interview/IdentityVerify';
 import CodeEditorRound from './pages/interview/CodeEditorRound';
 import LandingPage from './pages/landing/LandingPage';
+import InstallPWA from './components/InstallPWA';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -64,6 +69,7 @@ function GuestRoute({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <BrowserRouter>
+      <InstallPWA />
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route element={<AuthLayout />}>
@@ -103,6 +109,9 @@ export default function App() {
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/chatbot" element={<CandidateChatbot />} />
           <Route path="/retention" element={<PredictiveRetention />} />
+          <Route path="/whatsapp" element={<WhatsAppCenter />} />
+          <Route path="/group-discussion" element={<GroupDiscussion />} />
+          <Route path="/compensation" element={<CompensationBenchmark />} />
           {/* Settings */}
           <Route path="/settings/team" element={<TeamRoles />} />
           <Route path="/settings/sso" element={<SSOSettings />} />
@@ -119,6 +128,8 @@ export default function App() {
             own the full viewport (its own header, no app sidebar getting in the way) */}
         <Route path="/interviews/:interviewId/live" element={<PrivateRoute><LiveInterviewRoom /></PrivateRoute>} />
         <Route path="/interview/:token/live" element={<LiveInterviewRoom />} />
+        {/* Group discussion candidate room — no login, sessionId+candidateId in the URL are the access boundary */}
+        <Route path="/gd/:sessionId/:candidateId" element={<GDRoom />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

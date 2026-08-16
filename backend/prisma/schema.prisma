@@ -63,6 +63,8 @@ model Organization {
   auditLogs         AuditLog[]
   integrations      Integration[]
   notifications     Notification[]
+  naukriCandidates  NaukriCandidate[]
+  compensationBenchmarks CompensationBenchmark[]
 
   @@map("organizations")
 }
@@ -121,6 +123,7 @@ model Opening {
   candidates   Candidate[]
   biasAudit    BiasAudit?
   chatSessions ChatSession[]
+  groupDiscussions GroupDiscussion[]
 
   @@map("openings")
 }
@@ -132,11 +135,14 @@ model Question {
   type      String  @default("behavioral") // behavioral | technical | situational
   order     Int
   timeLimit Int     @default(120) // seconds per question
+  isCoding  Boolean @default(false)
+  testCases Json?   // [{input, expectedOutput}] — optional, used by coding.routes.ts
 
   createdAt DateTime @default(now())
 
-  opening   Opening    @relation(fields: [openingId], references: [id], onDelete: Cascade)
-  responses Response[]
+  opening            Opening            @relation(fields: [openingId], references: [id], onDelete: Cascade)
+  responses          Response[]
+  codingAssessments  CodingAssessment[]
 
   @@map("questions")
 }
@@ -158,6 +164,7 @@ model Candidate {
   talentPoolEntry       TalentPoolEntry?
   chatSessions          ChatSession[]
   employmentVerification EmploymentVerification?
+  whatsAppLogs          WhatsAppLog[]
 
   @@unique([email, openingId])
   @@map("candidates")
@@ -184,6 +191,8 @@ model Interview {
   cultureFitScore      CultureFitScore?
   retentionPrediction  RetentionPrediction?
   liveInterview        LiveInterview?
+  codingAssessments    CodingAssessment[]
+  videoHighlights      VideoHighlight[]
 
   @@map("interviews")
 }
@@ -481,4 +490,140 @@ model LiveInterview {
   interview Interview @relation(fields: [interviewId], references: [id])
 
   @@map("live_interviews")
+}
+
+// ─── WhatsApp Notifications ────────────────────────────────────────────────────
+// SIMULATION by default — real sends require TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN
+// env vars (see whatsapp.service.ts). isSimulated is persisted per-log so it can
+// never be silently dropped by a future consumer of this data.
+
+model WhatsAppLog {
+  id          String   @id @default(cuid())
+  candidateId String
+  phone       String
+  messageType String   // INVITE | REMINDER | RESULT | OFFER | CUSTOM
+  status      String   @default("SENT") // SENT | DELIVERED | FAILED | SIMULATED
+  message     String   @db.Text
+  sentAt      DateTime @default(now())
+  isSimulated Boolean  @default(true)
+
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@map("whatsapp_logs")
+}
+
+// ─── Naukri.com Integration ─────────────────────────────────────────────────────
+// SIMULATION ONLY — there is no real Naukri.com API integration. Every candidate
+// record created from a search result here is entirely fictional, AI-generated
+// data for prototyping purposes, not a real Naukri.com candidate.
+
+model NaukriCandidate {
+  id              String   @id @default(cuid())
+  organizationId  String
+  naukriId        String?
+  name            String
+  email           String?
+  phone           String?
+  currentRole     String?
+  currentCompany  String?
+  experienceYears Int?
+  skills          Json?
+  location        String?
+  salaryLakhs     Int?
+  resumeHeadline  String?
+  importedAt      DateTime @default(now())
+  status          String   @default("NEW") // NEW | INVITED | REJECTED
+  candidateId     String?
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@map("naukri_candidates")
+}
+
+// ─── Coding Assessment Round ─────────────────────────────────────────────────
+// output/aiScore/aiFeedback come from Judge0 execution (if JUDGE0_API_KEY is set)
+// or from a Claude code review otherwise — see coding.routes.ts.
+
+model CodingAssessment {
+  id           String   @id @default(cuid())
+  interviewId  String
+  questionId   String
+  language     String   // javascript | python | java | sql
+  code         String   @db.Text
+  output       String?  @db.Text
+  aiScore      Int?
+  aiFeedback   String?  @db.Text
+  timeSpentSec Int?
+  submittedAt  DateTime @default(now())
+
+  interview Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  question  Question  @relation(fields: [questionId], references: [id])
+
+  @@map("coding_assessments")
+}
+
+// ─── Group Discussion Simulation ────────────────────────────────────────────────
+
+model GroupDiscussion {
+  id           String   @id @default(cuid())
+  openingId    String
+  topic        String
+  duration     Int      @default(15) // minutes
+  status       String   @default("PENDING") // PENDING | ACTIVE | COMPLETED
+  participants Json     // [{candidateId, name, speakingTime, score}]
+  aiModerator  Boolean  @default(true)
+  transcript   Json?    // [{speaker, text, timestamp}]
+  report       Json?    // {rankings, summary, topPerformer}
+  scheduledAt  DateTime?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime @default(now())
+
+  opening Opening @relation(fields: [openingId], references: [id])
+
+  @@map("group_discussions")
+}
+
+// ─── Video Highlight Extraction ─────────────────────────────────────────────────
+// True video processing would need a recorded video file — NexHire only records
+// audio+transcripts server-side, so this extracts highlights from the interview
+// transcript instead (see ai.service.ts extractHighlights).
+
+model VideoHighlight {
+  id            String   @id @default(cuid())
+  interviewId   String
+  type          String   // STRONG_ANSWER | CULTURE_FIT_MOMENT | LEADERSHIP_SIGNAL | RED_FLAG | BEST_MOMENT
+  questionIndex Int
+  transcript    String   @db.Text // the highlighted text segment
+  startWord     Int?     // word position in transcript
+  endWord       Int?
+  score         Int      // 0-100 significance score
+  summary       String   @db.Text // one-line description of why this is notable
+  createdAt     DateTime @default(now())
+
+  interview Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  @@map("video_highlights")
+}
+
+// ─── Compensation Benchmarking ──────────────────────────────────────────────────
+
+model CompensationBenchmark {
+  id             String   @id @default(cuid())
+  organizationId String
+  jobTitle       String
+  location       String
+  experienceMin  Int
+  experienceMax  Int
+  p25Salary      Int      // 25th percentile in lakhs
+  p50Salary      Int      // median
+  p75Salary      Int      // 75th percentile
+  p90Salary      Int      // 90th percentile
+  currency       String   @default("INR")
+  source         String   @default("AI_ESTIMATE")
+  generatedAt    DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@map("compensation_benchmarks")
 }

@@ -70,6 +70,11 @@ export default function IdentityVerify() {
   };
 
   const proceedToInterview = () => {
+    // Best-effort — this click is the last real user gesture before InterviewRoom
+    // mounts, so it's the only reliable place the Fullscreen API will be allowed to fire.
+    if (window.innerWidth < 768 && document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
     navigate(`/interview/${token}/room`);
   };
 

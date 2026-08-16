@@ -333,4 +333,137 @@ export const offersApi = {
   },
 };
 
+// ─── Coding Assessment Round ────────────────────────────────────────────────────
+
+export const codingApi = {
+  submit: async (data: {
+    interviewId: string; questionId: string;
+    language: 'javascript' | 'python' | 'java' | 'sql';
+    code: string; timeSpentSec?: number;
+  }) => {
+    const res = await apiClient.post('/coding/submit', data);
+    return res.data;
+  },
+  list: async (interviewId: string) => {
+    const res = await apiClient.get(`/coding/${interviewId}`);
+    return res.data.assessments;
+  },
+};
+
+// ─── Compensation Benchmarking (AI estimate) ───────────────────────────────────
+
+export const compensationApi = {
+  generate: async (data: { jobTitle: string; location: string; minExp: number; maxExp: number }) => {
+    const res = await apiClient.post('/compensation/benchmark', data);
+    return res.data.benchmark;
+  },
+  list: async () => {
+    const res = await apiClient.get('/compensation/benchmark');
+    return res.data.benchmarks;
+  },
+  compare: async (benchmarkId: string, expectedSalaryLakhs: number) => {
+    const res = await apiClient.post('/compensation/compare', { benchmarkId, expectedSalaryLakhs });
+    return res.data.comparison;
+  },
+};
+
+// ─── Video Highlight Extraction (transcript-based, no video processing) ───────
+
+export const highlightsApi = {
+  extract: async (interviewId: string) => {
+    const res = await apiClient.post(`/highlights/${interviewId}`);
+    return res.data.highlights;
+  },
+  get: async (interviewId: string) => {
+    const res = await apiClient.get(`/highlights/${interviewId}`);
+    return res.data.highlights;
+  },
+};
+
+// ─── Group Discussion Simulation ───────────────────────────────────────────────
+
+export const gdApi = {
+  list: async (openingId?: string) => {
+    const res = await apiClient.get('/gd', { params: openingId ? { openingId } : undefined });
+    return res.data.sessions;
+  },
+  create: async (data: { openingId: string; topic: string; candidateIds: string[]; duration?: number }) => {
+    const res = await apiClient.post('/gd/create', data);
+    return res.data.groupDiscussion;
+  },
+  get: async (id: string) => {
+    const res = await apiClient.get(`/gd/${id}`);
+    return res.data.groupDiscussion;
+  },
+  start: async (id: string) => {
+    const res = await apiClient.post(`/gd/${id}/start`);
+    return res.data.groupDiscussion;
+  },
+  sendMessage: async (id: string, speakerId: string, message: string) => {
+    const res = await apiClient.post(`/gd/${id}/message`, { speakerId, message });
+    return res.data;
+  },
+  complete: async (id: string) => {
+    const res = await apiClient.post(`/gd/${id}/complete`);
+    return res.data.groupDiscussion;
+  },
+};
+
+// ─── Naukri.com Integration (simulation only) ──────────────────────────────────
+
+export const naukriApi = {
+  status: async () => {
+    const res = await apiClient.get('/integrations/naukri/status');
+    return res.data;
+  },
+  connect: async (apiKey: string) => {
+    const res = await apiClient.post('/integrations/naukri/connect', { apiKey });
+    return res.data;
+  },
+  search: async (params: {
+    skills?: string; location?: string; minExp?: number; maxExp?: number;
+    minSalary?: number; maxSalary?: number; openingId?: string;
+  }) => {
+    const res = await apiClient.get('/integrations/naukri/search', { params });
+    return res.data;
+  },
+  import: async (candidate: Record<string, any>) => {
+    const res = await apiClient.post('/integrations/naukri/import', candidate);
+    return res.data;
+  },
+  invite: async (naukriCandidateId: string, openingId: string) => {
+    const res = await apiClient.post(`/integrations/naukri/invite/${naukriCandidateId}`, { openingId });
+    return res.data;
+  },
+  imported: async () => {
+    const res = await apiClient.get('/integrations/naukri/imported');
+    return res.data.imported;
+  },
+};
+
+// ─── WhatsApp Notifications ────────────────────────────────────────────────────
+
+export const whatsappApi = {
+  send: async (data: { candidateId: string; messageType: 'INVITE' | 'REMINDER' | 'RESULT' | 'OFFER' | 'CUSTOM'; customMessage?: string }) => {
+    const res = await apiClient.post('/whatsapp/send', data);
+    return res.data;
+  },
+  invite: async (candidateId: string) => {
+    const res = await apiClient.post(`/whatsapp/invite/${candidateId}`);
+    return res.data;
+  },
+  remind: async (interviewId: string) => {
+    const res = await apiClient.post(`/whatsapp/remind/${interviewId}`);
+    return res.data;
+  },
+  logsForCandidate: async (candidateId: string) => {
+    const res = await apiClient.get(`/whatsapp/logs/${candidateId}`);
+    return res.data.logs;
+  },
+  logs: async () => {
+    const res = await apiClient.get('/whatsapp/logs');
+    return res.data.logs;
+  },
+};
+
 export { extractError };

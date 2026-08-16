@@ -33,6 +33,8 @@ export interface Question {
   type: 'behavioral' | 'technical' | 'situational';
   order: number;
   timeLimit: number;
+  isCoding?: boolean;
+  testCases?: { input: string; expectedOutput: string }[] | null;
   answered?: boolean;
 }
 

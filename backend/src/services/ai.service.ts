@@ -1109,3 +1109,442 @@ Return ONLY valid JSON, no other text:
     return { name: null, headline: null, location: null, skills: [] };
   }
 }
+
+// ─── Naukri.com Candidate Search (SIMULATION) ──────────────────────────────────
+// SIMULATION ONLY — there is no real Naukri.com API integration. Every profile
+// below is entirely fictional, generated to populate a demo "search Naukri
+// candidates" UI, and must never be presented as a real Naukri.com search result.
+
+export interface SimulatedNaukriCandidate {
+  name: string;
+  currentRole: string;
+  currentCompany: string;
+  experienceYears: number;
+  skills: string[];
+  location: string;
+  salaryLakhs: number;
+  resumeHeadline: string;
+}
+
+export async function generateSimulatedNaukriCandidates(params: {
+  skills: string[];
+  location: string;
+  minExp?: number;
+  maxExp?: number;
+  minSalary?: number;
+  maxSalary?: number;
+  count: number;
+}): Promise<SimulatedNaukriCandidate[]> {
+  const expRange = params.minExp != null || params.maxExp != null
+    ? `${params.minExp ?? 0}-${params.maxExp ?? (params.minExp ?? 0) + 5} years`
+    : 'varied, 1-12 years';
+  const salaryLine = params.minSalary != null || params.maxSalary != null
+    ? `Expected salary range: ${params.minSalary ?? 0}-${params.maxSalary ?? 100} lakhs per annum (INR)`
+    : '';
+
+  const prompt = `You are generating a FICTIONAL, SIMULATED dataset for a software prototype only.
+This is NOT real Naukri.com data and must never be described as authentic. It exists only to populate
+a demo UI for a "search Naukri.com candidates" feature that has no real Naukri API integration.
+
+Generate ${params.count} plausible but entirely fictional Indian candidates for a role requiring:
+Skills: ${params.skills.join(', ') || 'general professional skills'}
+Location: ${params.location || 'any major Indian city'}
+Experience: ${expRange}
+${salaryLine}
+
+Invent generic names — do not reference any real, identifiable person. Use realistic Indian names,
+companies (TCS, Infosys, Wipro, HCL, Cognizant, Accenture, etc.), and Chennai/Bengaluru/Hyderabad/Mumbai/
+Pune/Delhi locations.
+
+For each fictional candidate, generate:
+- name: a plausible Indian full name (invented)
+- currentRole: current job title
+- currentCompany: current employer (from the list above or a similar well-known Indian company)
+- experienceYears: total years of experience (integer)
+- skills: 5-8 skills, mixing exact matches to the required skills and adjacent skills
+- location: an Indian city
+- salaryLakhs: current/expected annual salary in INR lakhs (integer)
+- resumeHeadline: a short Naukri-style resume headline
+
+Return ONLY valid JSON array, no other text:
+[{ "name": "...", "currentRole": "...", "currentCompany": "...", "experienceYears": 5, "skills": ["..."], "location": "...", "salaryLakhs": 12, "resumeHeadline": "..." }]`;
+
+  try {
+    const res = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 2000,
+      temperature: 0.6,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const content = res.content[0].type === 'text' ? res.content[0].text : '[]';
+    const cleaned = content.replace(/```json|```/g, '').trim();
+    return JSON.parse(cleaned) as SimulatedNaukriCandidate[];
+  } catch (err) {
+    console.error('[ai.service] generateSimulatedNaukriCandidates failed:', err);
+    return [];
+  }
+}
+
+// Scores fictional/imported Naukri candidates against an opening's requirements.
+// Returns a { candidateName: matchPercent } map — best-effort, empty map on failure
+// (callers should treat a missing entry as "no match score available", not 0).
+export async function scoreNaukriMatches(params: {
+  candidates: { name: string; skills: string[]; experienceYears: number; currentRole: string }[];
+  jobTitle: string;
+  requiredSkills: string[];
+}): Promise<Record<string, number>> {
+  if (params.candidates.length === 0) return {};
+
+  const prompt = `You are scoring how well each candidate matches a job opening's requirements.
+
+Job title: ${params.jobTitle}
+Required skills: ${params.requiredSkills.join(', ') || 'not specified'}
+
+Candidates:
+${params.candidates.map((c, i) => `${i + 1}. ${c.name} — ${c.currentRole}, ${c.experienceYears}y exp, skills: ${c.skills.join(', ')}`).join('\n')}
+
+For each candidate, score 0-100 how well they match the job's required skills and role, considering
+skill overlap and relevant experience. Return ONLY valid JSON, no other text:
+{ "matches": [{ "name": "<candidate name exactly as given above>", "matchPercent": 78 }] }`;
+
+  try {
+    const res = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 800,
+      temperature: 0.2,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const content = res.content[0].type === 'text' ? res.content[0].text : '{}';
+    const cleaned = content.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(cleaned);
+    const matches: { name: string; matchPercent: number }[] = Array.isArray(parsed.matches) ? parsed.matches : [];
+    return Object.fromEntries(matches.map((m) => [m.name, m.matchPercent]));
+  } catch (err) {
+    console.error('[ai.service] scoreNaukriMatches failed:', err);
+    return {};
+  }
+}
+
+// ─── Coding Assessment Code Review ─────────────────────────────────────────────
+// Used when no Judge0 API key is configured — Claude reviews the code for
+// correctness, efficiency, and quality without actually executing it.
+
+export interface CodeReviewResult {
+  score: number;
+  feedback: string;
+  bugs: string[];
+  suggestions: string[];
+}
+
+export async function reviewCode(params: {
+  code: string;
+  language: string;
+  question: string;
+  testCases?: any[];
+}): Promise<CodeReviewResult> {
+  const testCasesBlock = params.testCases?.length
+    ? `\nTest cases to consider:\n${JSON.stringify(params.testCases, null, 2)}`
+    : '';
+
+  const prompt = `Review this ${params.language} code for the following problem:
+
+Problem: ${params.question}
+${testCasesBlock}
+
+Candidate's code:
+\`\`\`${params.language}
+${params.code}
+\`\`\`
+
+Score 0-100 for correctness, efficiency, and code quality. Provide specific feedback on bugs,
+edge cases missed, and improvements.
+
+Return ONLY valid JSON, no other text:
+{ "score": 75, "feedback": "<2-3 sentence overall assessment>", "bugs": ["<specific bug or edge case, if any>"], "suggestions": ["<specific improvement>"] }`;
+
+  try {
+    const res = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 900,
+      temperature: 0.2,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const content = res.content[0].type === 'text' ? res.content[0].text : '{}';
+    const cleaned = content.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(cleaned);
+    return {
+      score: typeof parsed.score === 'number' ? Math.max(0, Math.min(100, Math.round(parsed.score))) : 0,
+      feedback: parsed.feedback ?? 'Unable to generate feedback for this submission.',
+      bugs: Array.isArray(parsed.bugs) ? parsed.bugs : [],
+      suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions : [],
+    };
+  } catch (err) {
+    console.error('[ai.service] reviewCode failed:', err);
+    return {
+      score: 0,
+      feedback: 'Automated code review is temporarily unavailable. Your submission was saved and a recruiter can review it manually.',
+      bugs: [],
+      suggestions: [],
+    };
+  }
+}
+
+// ─── Group Discussion AI Moderator ─────────────────────────────────────────────
+// groupdiscussion.service.ts owns the domain logic (dominance detection, when to
+// summarize); these functions just wrap the two Claude calls it needs.
+
+export interface GDModerationResult {
+  message: string | null;
+}
+
+export async function moderateGroupDiscussion(params: {
+  topic: string;
+  participantNames: string[];
+  transcript: { speaker: string; text: string; timestamp: string }[];
+  dominantSpeakerName: string | null;
+  shouldSummarize: boolean;
+}): Promise<GDModerationResult> {
+  const recentTranscript = params.transcript.slice(-12).map((t) => `${t.speaker}: ${t.text}`).join('\n');
+
+  const instruction = params.dominantSpeakerName
+    ? `${params.dominantSpeakerName} has been dominating the conversation. Politely redirect the discussion, e.g. "Thank you ${params.dominantSpeakerName}, let's hear from others," and invite a quieter participant to weigh in.`
+    : params.shouldSummarize
+    ? `Summarise what has been discussed so far in 1-2 sentences (e.g. "So far we have discussed..."), then ask a follow-up question to keep the discussion moving.`
+    : `Decide whether the discussion needs a brief moderator nudge right now — e.g. asking a quieter participant "What does <name> think about this?" — or whether it's flowing naturally and needs no intervention.`;
+
+  const prompt = `You are an AI moderator for a group discussion round in a hiring interview process.
+
+Topic: "${params.topic}"
+Participants: ${params.participantNames.join(', ')}
+
+Recent transcript:
+${recentTranscript}
+
+${instruction}
+
+Return ONLY valid JSON, no other text:
+{ "message": "<moderator message, or null if no intervention is needed right now>" }`;
+
+  try {
+    const res = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 300,
+      temperature: 0.5,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const content = res.content[0].type === 'text' ? res.content[0].text : '{}';
+    const cleaned = content.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(cleaned);
+    return { message: parsed.message ?? null };
+  } catch (err) {
+    console.error('[ai.service] moderateGroupDiscussion failed:', err);
+    return { message: null };
+  }
+}
+
+export interface GDIndividualScore {
+  candidateId: string;
+  name: string;
+  communication: number;
+  content: number;
+  leadership: number;
+  listening: number;
+  overall: number;
+  feedback: string;
+}
+
+export interface GDEvaluationResult {
+  scores: GDIndividualScore[];
+  ranking: string[]; // candidateIds, best to worst
+  topPerformer: string | null; // candidateId
+  summary: string;
+}
+
+export async function evaluateGroupDiscussion(params: {
+  topic: string;
+  participants: { candidateId: string; name: string; speakingTime: number }[];
+  transcript: { speaker: string; text: string; timestamp: string }[];
+}): Promise<GDEvaluationResult> {
+  const transcriptText = params.transcript.map((t) => `${t.speaker}: ${t.text}`).join('\n');
+
+  const prompt = `You are evaluating a group discussion round in a hiring interview process.
+
+Topic: "${params.topic}"
+Participants: ${params.participants.map((p) => `${p.name} (spoke ${p.speakingTime} turns)`).join(', ')}
+
+Full transcript:
+${transcriptText || '(no messages were exchanged)'}
+
+For each participant, score 0-100 on: communication, content (quality of ideas), leadership
+(initiative, guiding the discussion), and listening (building on others' points, not interrupting).
+Compute an overall score (average of the four). Provide 1-2 sentences of individual feedback.
+Then rank participants best to worst and identify the top performer, plus a 2-3 sentence session summary.
+
+Return ONLY valid JSON, no other text:
+{
+  "scores": [{ "name": "<participant name exactly as given above>", "communication": 80, "content": 75, "leadership": 60, "listening": 85, "overall": 75, "feedback": "..." }],
+  "ranking": ["<name, best to worst>"],
+  "topPerformer": "<name>",
+  "summary": "..."
+}`;
+
+  try {
+    const res = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 1500,
+      temperature: 0.3,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const content = res.content[0].type === 'text' ? res.content[0].text : '{}';
+    const cleaned = content.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(cleaned);
+
+    const nameToId = new Map(params.participants.map((p) => [p.name, p.candidateId]));
+    const scores: GDIndividualScore[] = (Array.isArray(parsed.scores) ? parsed.scores : []).map((s: any) => ({
+      candidateId: nameToId.get(s.name) ?? s.name,
+      name: s.name,
+      communication: s.communication ?? 0,
+      content: s.content ?? 0,
+      leadership: s.leadership ?? 0,
+      listening: s.listening ?? 0,
+      overall: s.overall ?? 0,
+      feedback: s.feedback ?? '',
+    }));
+    const ranking: string[] = (Array.isArray(parsed.ranking) ? parsed.ranking : []).map((n: string) => nameToId.get(n) ?? n);
+
+    return {
+      scores,
+      ranking,
+      topPerformer: parsed.topPerformer ? (nameToId.get(parsed.topPerformer) ?? parsed.topPerformer) : null,
+      summary: parsed.summary ?? '',
+    };
+  } catch (err) {
+    console.error('[ai.service] evaluateGroupDiscussion failed:', err);
+    return { scores: [], ranking: [], topPerformer: null, summary: 'Unable to generate evaluation for this session.' };
+  }
+}
+
+// ─── Video Highlight Extraction ────────────────────────────────────────────────
+// No video file is ever processed — this identifies the best moments in the
+// interview transcript. Each entry in `transcripts` should already describe
+// which question it answers (see highlights.routes.ts), and its index in the
+// array is what questionIndex below refers back to.
+
+export interface ExtractedHighlight {
+  type: 'STRONG_ANSWER' | 'CULTURE_FIT_MOMENT' | 'LEADERSHIP_SIGNAL' | 'RED_FLAG' | 'BEST_MOMENT';
+  questionIndex: number;
+  transcript: string;
+  score: number;
+  summary: string;
+}
+
+const HIGHLIGHT_TYPES = new Set(['STRONG_ANSWER', 'CULTURE_FIT_MOMENT', 'LEADERSHIP_SIGNAL', 'RED_FLAG', 'BEST_MOMENT']);
+
+export async function extractHighlights(transcripts: string[], jobTitle: string): Promise<ExtractedHighlight[]> {
+  if (transcripts.length === 0) return [];
+
+  const transcriptBlock = transcripts.map((t, i) => `[${i}]\n${t}`).join('\n\n');
+
+  const prompt = `You are an expert talent analyst. Review this interview transcript for a ${jobTitle} role
+and identify the 5-8 most significant moments across the numbered entries below.
+
+${transcriptBlock}
+
+For each significant moment, identify:
+- type: one of STRONG_ANSWER, CULTURE_FIT_MOMENT, LEADERSHIP_SIGNAL, RED_FLAG, BEST_MOMENT
+- questionIndex: the bracketed entry number [N] it came from (integer)
+- transcript: the exact excerpt from that entry's answer that makes this moment notable
+- score: 0-100 significance score
+- summary: a one-line description of why this moment is notable
+
+Return ONLY valid JSON array, no other text:
+[{ "type": "STRONG_ANSWER", "questionIndex": 0, "transcript": "...", "score": 88, "summary": "..." }]`;
+
+  try {
+    const res = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 2000,
+      temperature: 0.3,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const content = res.content[0].type === 'text' ? res.content[0].text : '[]';
+    const cleaned = content.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(cleaned);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .filter((h: any) => HIGHLIGHT_TYPES.has(h.type))
+      .map((h: any) => ({
+        type: h.type,
+        questionIndex: typeof h.questionIndex === 'number' ? h.questionIndex : 0,
+        transcript: h.transcript ?? '',
+        score: typeof h.score === 'number' ? Math.max(0, Math.min(100, Math.round(h.score))) : 0,
+        summary: h.summary ?? '',
+      }));
+  } catch (err) {
+    console.error('[ai.service] extractHighlights failed:', err);
+    return [];
+  }
+}
+
+// ─── Compensation Benchmarking ─────────────────────────────────────────────────
+// AI-estimated market rates, not a real compensation survey/data licensing feed —
+// callers should treat `source: 'AI_ESTIMATE'` (the schema default) as authoritative
+// about how this number was derived.
+
+export interface CompensationBenchmarkResult {
+  p25: number;
+  p50: number;
+  p75: number;
+  p90: number;
+  topCompanies: string[];
+  premiumSkills: string[];
+  trend: 'rising' | 'stable' | 'declining';
+  analysis: string;
+}
+
+export async function generateCompensationBenchmark(params: {
+  jobTitle: string;
+  location: string;
+  minExp: number;
+  maxExp: number;
+}): Promise<CompensationBenchmarkResult> {
+  const prompt = `You are an expert in Indian IT compensation. Provide realistic salary benchmarks for
+${params.jobTitle} in ${params.location} with ${params.minExp}-${params.maxExp} years experience.
+Base this on current Indian market rates (2026). Include P25, P50, P75, P90 percentiles in INR lakhs
+per annum. Also provide: top paying companies for this role, skills that command a premium, and the
+market trend (rising/stable/declining).
+
+Return ONLY valid JSON, no other text:
+{ "p25": 12, "p50": 18, "p75": 26, "p90": 38, "topCompanies": ["..."], "premiumSkills": ["..."], "trend": "rising", "analysis": "<2-3 sentence market analysis>" }`;
+
+  try {
+    const res = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 900,
+      temperature: 0.3,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const content = res.content[0].type === 'text' ? res.content[0].text : '{}';
+    const cleaned = content.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(cleaned);
+    const trend = ['rising', 'stable', 'declining'].includes(parsed.trend) ? parsed.trend : 'stable';
+    return {
+      p25: Math.round(parsed.p25 ?? 0),
+      p50: Math.round(parsed.p50 ?? 0),
+      p75: Math.round(parsed.p75 ?? 0),
+      p90: Math.round(parsed.p90 ?? 0),
+      topCompanies: Array.isArray(parsed.topCompanies) ? parsed.topCompanies : [],
+      premiumSkills: Array.isArray(parsed.premiumSkills) ? parsed.premiumSkills : [],
+      trend,
+      analysis: parsed.analysis ?? 'Unable to generate a market analysis at this time.',
+    };
+  } catch (err) {
+    console.error('[ai.service] generateCompensationBenchmark failed:', err);
+    return {
+      p25: 0, p50: 0, p75: 0, p90: 0,
+      topCompanies: [], premiumSkills: [], trend: 'stable',
+      analysis: 'Unable to generate a compensation benchmark at this time.',
+    };
+  }
+}

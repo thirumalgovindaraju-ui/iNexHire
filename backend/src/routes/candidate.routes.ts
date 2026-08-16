@@ -7,7 +7,9 @@ import { requireAdmin } from '../middleware/requireRole';
 import { validate } from '../middleware/validate';
 import { AppError } from '../middleware/errorHandler';
 import { sendInterviewInvite } from '../services/email.service';
+import { sendWhatsApp } from '../services/whatsapp.service';
 import { env } from '../config/env';
+import { logger } from '../utils/logger';
 
 const router = Router();
 router.use(authenticate);
@@ -260,6 +262,19 @@ export async function createInterviewAndSendInvite(
     interviewLink: link,
     expiryDate: expiresAt,
   });
+
+  if (candidate.phone) {
+    // Best-effort — a WhatsApp failure should never block the (already-sent) email invite.
+    await sendWhatsApp({
+      candidateId: candidate.id,
+      phone: candidate.phone,
+      messageType: 'INVITE',
+      candidateName: candidate.name,
+      role: opening.title,
+      company: opening.organization?.name ?? 'Company',
+      link,
+    }).catch((err) => logger.error('[candidate.routes] WhatsApp invite failed:', err));
+  }
 
   return interview;
 }

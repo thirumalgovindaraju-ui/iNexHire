@@ -5,7 +5,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { interviewsApi } from '../../services/api';
+import { interviewsApi, codingApi } from '../../services/api';
 
 interface CodingQuestion {
   id: string;
@@ -15,9 +15,24 @@ interface CodingQuestion {
   examples: Array<{ input: string; output: string; explanation?: string }>;
   starterCode: Record<string, string>;
   hints?: string[];
+  testCases?: { input: string; expectedOutput: string }[];
 }
 
-const LANGUAGES = ['JavaScript', 'Python', 'TypeScript', 'Java', 'C++'];
+interface AssessmentResult {
+  score: number;
+  feedback: string;
+  bugs: string[];
+  suggestions: string[];
+  output: string | null;
+}
+
+// Display labels map 1:1 to the backend's supported language codes (coding.routes.ts submitSchema).
+const LANGUAGES: { label: string; code: 'javascript' | 'python' | 'java' | 'sql' }[] = [
+  { label: 'JavaScript', code: 'javascript' },
+  { label: 'Python', code: 'python' },
+  { label: 'Java', code: 'java' },
+  { label: 'SQL', code: 'sql' },
+];
 
 const DIFFICULTY_COLORS = {
   Easy: 'text-green-600 bg-green-50',
@@ -38,6 +53,7 @@ export default function CodeEditorRound() {
   const [isRunning, setIsRunning] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState<Set<string>>(new Set());
+  const [assessments, setAssessments] = useState<Record<string, AssessmentResult>>({});
   const [showHint, setShowHint] = useState(false);
   const [hintIdx, setHintIdx] = useState(0);
   const [timeLeft, setTimeLeft] = useState(30 * 60); // 30 min
@@ -68,11 +84,11 @@ export default function CodeEditorRound() {
             starterCode: {
               JavaScript: `// Write your solution here\nfunction solution() {\n  \n}\n`,
               Python: `# Write your solution here\ndef solution():\n    pass\n`,
-              TypeScript: `// Write your solution here\nfunction solution(): void {\n  \n}\n`,
               Java: `// Write your solution here\npublic class Solution {\n    public void solution() {\n        \n    }\n}\n`,
-              'C++': `// Write your solution here\n#include <bits/stdc++.h>\nusing namespace std;\n\nvoid solution() {\n    \n}\n`,
+              SQL: `-- Write your query here\nSELECT 1;\n`,
             },
             hints: ['Break the problem into smaller steps', 'Think about edge cases', 'Consider time complexity'],
+            testCases: Array.isArray(q.testCases) ? q.testCases : undefined,
           }));
 
         if (codingQs.length === 0) {
@@ -118,7 +134,8 @@ export default function CodeEditorRound() {
     }
   };
 
-  // Simulate code run (real execution needs Judge0 API - Month 2)
+  // Quick client-side preview only — the real, scored execution/review happens
+  // server-side in submitAnswer() via POST /api/coding/submit.
   const runCode = useCallback(async () => {
     setIsRunning(true);
     setOutput('');
@@ -132,7 +149,7 @@ export default function CodeEditorRound() {
         sandbox({ log: (...args: any[]) => logs.push(args.join(' ')) });
         setOutput(logs.length ? logs.join('\n') : '✓ Code executed (no output)');
       } else {
-        setOutput(`⚠ Live execution for ${language} requires Judge0 API (Month 2 feature).\nCode will be saved and evaluated by AI after submission.`);
+        setOutput(`⚠ Live preview for ${language} isn't available here — submit your answer to have it executed/reviewed.`);
       }
     } catch (err: any) {
       setOutput(`❌ Error: ${err.message}`);
@@ -141,35 +158,64 @@ export default function CodeEditorRound() {
     }
   }, [code, language]);
 
+  const languageCode = LANGUAGES.find((l) => l.label === language)?.code ?? 'javascript';
+
+  // Submits code for AI review/execution and shows the feedback panel — does NOT
+  // auto-advance, so the candidate can read their score/feedback before continuing.
   const submitAnswer = useCallback(async () => {
     if (!currentQ || !interviewId) return;
     setIsSubmitting(true);
     try {
+      const { assessment } = await codingApi.submit({
+        interviewId,
+        questionId: currentQ.id,
+        language: languageCode,
+        code,
+        timeSpentSec: (30 * 60) - timeLeft,
+      });
+
       await interviewsApi.submitResponse(interviewId, {
         questionId: currentQ.id,
         transcript: `[${language}]\n\n${code}`,
         duration: (30 * 60) - timeLeft,
       });
-      setSubmitted((s) => new Set([...s, currentQ.id]));
 
-      // Move to next or complete
-      if (currentIdx < questions.length - 1) {
-        const next = questions[currentIdx + 1];
-        setCurrentIdx(currentIdx + 1);
-        setCode(next.starterCode[language]);
-        setOutput('');
-        setShowHint(false);
-        setHintIdx(0);
-      } else {
-        await interviewsApi.complete(interviewId);
-        navigate('/interview/complete');
-      }
+      setAssessments((prev) => ({
+        ...prev,
+        [currentQ.id]: {
+          score: assessment.aiScore ?? 0,
+          feedback: assessment.aiFeedback ?? '',
+          bugs: assessment.bugs ?? [],
+          suggestions: assessment.suggestions ?? [],
+          output: assessment.output ?? null,
+        },
+      }));
+      setSubmitted((s) => new Set([...s, currentQ.id]));
     } catch (err: any) {
       setOutput(`❌ Submit failed: ${err.message}`);
     } finally {
       setIsSubmitting(false);
     }
-  }, [currentQ, interviewId, code, language, timeLeft, currentIdx, questions, navigate]);
+  }, [currentQ, interviewId, code, language, languageCode, timeLeft]);
+
+  const continueAfterSubmit = useCallback(async () => {
+    if (currentIdx < questions.length - 1) {
+      const next = questions[currentIdx + 1];
+      setCurrentIdx(currentIdx + 1);
+      setCode(next.starterCode[language] ?? '');
+      setOutput('');
+      setShowHint(false);
+      setHintIdx(0);
+    } else {
+      setIsSubmitting(true);
+      try {
+        await interviewsApi.complete(interviewId);
+        navigate('/interview/complete');
+      } finally {
+        setIsSubmitting(false);
+      }
+    }
+  }, [currentIdx, questions, language, interviewId, navigate]);
 
   const formatTime = (s: number) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
 
@@ -218,7 +264,7 @@ export default function CodeEditorRound() {
             {questions.map((q, i) => (
               <button
                 key={q.id}
-                onClick={() => { setCurrentIdx(i); setCode(q.starterCode[language]); setOutput(''); }}
+                onClick={() => { setCurrentIdx(i); setCode(q.starterCode[language] ?? ''); setOutput(''); }}
                 className={`w-7 h-7 rounded text-xs font-bold transition-colors ${
                   i === currentIdx ? 'bg-brand-600 text-white' :
                   submitted.has(q.id) ? 'bg-green-700 text-white' : 'bg-surface-700 text-surface-400 hover:bg-surface-600'
@@ -277,31 +323,44 @@ export default function CodeEditorRound() {
             <select
               value={language}
               onChange={(e) => { setLanguage(e.target.value); setCode(currentQ.starterCode[e.target.value] ?? code); }}
-              className="bg-surface-700 border border-surface-600 text-white text-xs rounded px-2 py-1 focus:outline-none focus:border-brand-500"
+              disabled={submitted.has(currentQ.id)}
+              className="bg-surface-700 border border-surface-600 text-white text-xs rounded px-2 py-1 focus:outline-none focus:border-brand-500 disabled:opacity-50"
             >
-              {LANGUAGES.map((l) => <option key={l}>{l}</option>)}
+              {LANGUAGES.map((l) => <option key={l.label}>{l.label}</option>)}
             </select>
             <div className="flex gap-2">
-              <button
-                onClick={() => setCode(currentQ.starterCode[language])}
-                className="text-xs px-2 py-1 bg-surface-700 hover:bg-surface-600 text-surface-400 rounded transition-colors"
-              >
-                Reset
-              </button>
-              <button
-                onClick={runCode}
-                disabled={isRunning}
-                className="text-xs px-3 py-1 bg-green-700 hover:bg-green-600 text-white rounded font-semibold transition-colors disabled:opacity-50"
-              >
-                {isRunning ? '⏳ Running...' : '▶ Run'}
-              </button>
-              <button
-                onClick={submitAnswer}
-                disabled={isSubmitting || submitted.has(currentQ.id)}
-                className="text-xs px-3 py-1 bg-brand-600 hover:bg-brand-700 text-white rounded font-semibold transition-colors disabled:opacity-50"
-              >
-                {isSubmitting ? 'Submitting...' : submitted.has(currentQ.id) ? '✓ Submitted' : 'Submit →'}
-              </button>
+              {submitted.has(currentQ.id) ? (
+                <button
+                  onClick={continueAfterSubmit}
+                  disabled={isSubmitting}
+                  className="text-xs px-3 py-1 bg-brand-600 hover:bg-brand-700 text-white rounded font-semibold transition-colors disabled:opacity-50"
+                >
+                  {isSubmitting ? 'Finishing...' : currentIdx < questions.length - 1 ? 'Next Question →' : 'Finish Interview →'}
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={() => setCode(currentQ.starterCode[language])}
+                    className="text-xs px-2 py-1 bg-surface-700 hover:bg-surface-600 text-surface-400 rounded transition-colors"
+                  >
+                    Reset
+                  </button>
+                  <button
+                    onClick={runCode}
+                    disabled={isRunning}
+                    className="text-xs px-3 py-1 bg-green-700 hover:bg-green-600 text-white rounded font-semibold transition-colors disabled:opacity-50"
+                  >
+                    {isRunning ? '⏳ Running...' : '▶ Run'}
+                  </button>
+                  <button
+                    onClick={submitAnswer}
+                    disabled={isSubmitting}
+                    className="text-xs px-3 py-1 bg-brand-600 hover:bg-brand-700 text-white rounded font-semibold transition-colors disabled:opacity-50"
+                  >
+                    {isSubmitting ? 'Submitting...' : 'Submit →'}
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
@@ -319,20 +378,60 @@ export default function CodeEditorRound() {
             />
           </div>
 
-          {/* Output panel */}
-          <div className="h-40 bg-surface-900 border-t border-surface-700 flex flex-col">
-            <div className="h-8 bg-surface-800 border-b border-surface-700 flex items-center px-4 gap-2">
-              <span className="text-xs text-surface-400 font-semibold uppercase tracking-wider">Output</span>
-              {output && (
-                <button onClick={() => setOutput('')} className="text-xs text-surface-500 hover:text-surface-400 ml-auto">
-                  Clear
-                </button>
-              )}
+          {/* Output panel / AI Feedback panel */}
+          {submitted.has(currentQ.id) && assessments[currentQ.id] ? (
+            <div className="h-56 bg-surface-900 border-t border-surface-700 flex flex-col overflow-hidden">
+              <div className="h-8 bg-surface-800 border-b border-surface-700 flex items-center px-4 gap-2 flex-shrink-0">
+                <span className="text-xs text-purple-300 font-semibold uppercase tracking-wider">AI Feedback</span>
+                <span className={`ml-auto text-sm font-bold px-2 py-0.5 rounded ${
+                  assessments[currentQ.id].score >= 70 ? 'text-green-400 bg-green-900/30' :
+                  assessments[currentQ.id].score >= 40 ? 'text-yellow-400 bg-yellow-900/30' :
+                  'text-red-400 bg-red-900/30'
+                }`}>
+                  {assessments[currentQ.id].score}/100
+                </span>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 text-xs leading-relaxed space-y-3">
+                <p className="text-surface-200">{assessments[currentQ.id].feedback}</p>
+                {assessments[currentQ.id].output && (
+                  <div>
+                    <div className="text-surface-500 font-semibold uppercase tracking-wider mb-1">Execution Output</div>
+                    <pre className="bg-surface-800 rounded p-2 text-surface-300 font-mono whitespace-pre-wrap">{assessments[currentQ.id].output}</pre>
+                  </div>
+                )}
+                {assessments[currentQ.id].bugs.length > 0 && (
+                  <div>
+                    <div className="text-red-400 font-semibold uppercase tracking-wider mb-1">Bugs / Edge Cases</div>
+                    <ul className="list-disc list-inside text-surface-300 space-y-0.5">
+                      {assessments[currentQ.id].bugs.map((b, i) => <li key={i}>{b}</li>)}
+                    </ul>
+                  </div>
+                )}
+                {assessments[currentQ.id].suggestions.length > 0 && (
+                  <div>
+                    <div className="text-blue-400 font-semibold uppercase tracking-wider mb-1">Suggestions</div>
+                    <ul className="list-disc list-inside text-surface-300 space-y-0.5">
+                      {assessments[currentQ.id].suggestions.map((s, i) => <li key={i}>{s}</li>)}
+                    </ul>
+                  </div>
+                )}
+              </div>
             </div>
-            <pre className="flex-1 overflow-y-auto p-4 text-xs font-mono text-surface-300 leading-relaxed whitespace-pre-wrap">
-              {output || <span className="text-surface-600">Click ▶ Run to execute your code</span>}
-            </pre>
-          </div>
+          ) : (
+            <div className="h-40 bg-surface-900 border-t border-surface-700 flex flex-col">
+              <div className="h-8 bg-surface-800 border-b border-surface-700 flex items-center px-4 gap-2">
+                <span className="text-xs text-surface-400 font-semibold uppercase tracking-wider">Output</span>
+                {output && (
+                  <button onClick={() => setOutput('')} className="text-xs text-surface-500 hover:text-surface-400 ml-auto">
+                    Clear
+                  </button>
+                )}
+              </div>
+              <pre className="flex-1 overflow-y-auto p-4 text-xs font-mono text-surface-300 leading-relaxed whitespace-pre-wrap">
+                {output || <span className="text-surface-600">Click ▶ Run to execute your code</span>}
+              </pre>
+            </div>
+          )}
         </div>
       </div>
     </div>

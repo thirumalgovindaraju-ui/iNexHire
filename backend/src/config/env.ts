@@ -38,6 +38,12 @@ export const env = {
   awsS3Bucket: optional('AWS_S3_BUCKET', ''),
 
   inviteExpiryDays: parseInt(optional('INVITE_EXPIRY_DAYS', '7')),
+
+  twilioAccountSid: optional('TWILIO_ACCOUNT_SID', ''),
+  twilioAuthToken: optional('TWILIO_AUTH_TOKEN', ''),
+  twilioWhatsAppNumber: optional('TWILIO_WHATSAPP_NUMBER', ''), // e.g. "whatsapp:+14155238886"
+
+  judge0ApiKey: optional('JUDGE0_API_KEY', ''), // RapidAPI key for judge0-ce.p.rapidapi.com — optional, Claude reviews code without it
 };
 
 if (!env.openaiApiKey) {
