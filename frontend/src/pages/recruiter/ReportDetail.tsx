@@ -9,6 +9,13 @@ import {
 } from '../../components/ui';
 import type { Report } from '../../types';
 
+const SEVERITY_STYLE: Record<string, { emoji: string; className: string }> = {
+  CRITICAL: { emoji: '🔴', className: 'bg-red-50 text-red-600' },
+  HIGH: { emoji: '🟡', className: 'bg-amber-50 text-amber-700' },
+  MEDIUM: { emoji: '🟠', className: 'bg-orange-50 text-orange-600' },
+  LOW: { emoji: '🔵', className: 'bg-blue-50 text-blue-600' },
+};
+
 const DECISIONS = [
   { value: 'MOVE_FORWARD', label: '✓ Move Forward' },
   { value: 'ON_HOLD', label: '⏸ On Hold' },
@@ -117,18 +124,41 @@ export default function ReportDetail() {
             </Button>
           </Card>
 
-          {/* Proctoring */}
+          {/* Proctoring summary */}
           {report.proctorSummary && report.proctorSummary.totalEvents > 0 && (
             <Card className="p-5">
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-2 mb-3">
                 <ShieldAlert size={15} className="text-orange-500" />
-                <h3 className="font-semibold text-surface-900 text-sm">Proctoring</h3>
+                <h3 className="font-semibold text-surface-900 text-sm">Proctoring Summary</h3>
               </div>
-              <p className="text-sm text-orange-600 font-medium">{report.proctorSummary.totalEvents} events detected</p>
-              <div className="mt-2 space-y-1">
-                {report.proctorSummary.events.slice(0, 5).map((e, i) => (
-                  <p key={i} className="text-xs text-surface-500">{e.type.replace(/_/g, ' ')}</p>
-                ))}
+              <p className="text-sm text-orange-600 font-medium mb-2">{report.proctorSummary.totalEvents} events detected</p>
+
+              {report.proctorSummary.bySeverity && (
+                <div className="flex gap-2 flex-wrap mb-3">
+                  {(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'] as const)
+                    .filter((sev) => (report.proctorSummary!.bySeverity![sev] ?? 0) > 0)
+                    .map((sev) => {
+                      const meta = SEVERITY_STYLE[sev];
+                      return (
+                        <span key={sev} className={`text-xs font-semibold px-2 py-0.5 rounded-full ${meta.className}`}>
+                          {meta.emoji} {sev} ×{report.proctorSummary!.bySeverity![sev]}
+                        </span>
+                      );
+                    })}
+                </div>
+              )}
+
+              <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                {report.proctorSummary.events.map((e, i) => {
+                  const meta = e.severity ? SEVERITY_STYLE[e.severity] : undefined;
+                  return (
+                    <p key={i} className="text-xs text-surface-500 flex items-center gap-1.5">
+                      {meta && <span>{meta.emoji}</span>}
+                      <span>{e.description ?? e.type.replace(/_/g, ' ').toLowerCase()}</span>
+                      <span className="text-surface-300">· {new Date(e.timestamp).toLocaleTimeString('en-GB')}</span>
+                    </p>
+                  );
+                })}
               </div>
             </Card>
           )}

@@ -76,7 +76,11 @@ export interface Report {
   candidate?: Candidate;
   opening?: Partial<Opening>;
   responses?: ResponseItem[];
-  proctorSummary?: { totalEvents: number; events: ProctorEvent[] };
+  proctorSummary?: {
+    totalEvents: number;
+    bySeverity?: Record<string, number>;
+    events: ProctorEvent[];
+  };
 }
 
 export interface ResponseItem {
@@ -91,6 +95,8 @@ export interface ResponseItem {
 export interface ProctorEvent {
   type: string;
   timestamp: string;
+  severity?: string;
+  description?: string;
 }
 
 export interface DashboardMetrics {

@@ -9,6 +9,7 @@ import { Router } from 'express';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/db';
 import { authenticate } from '../../middleware/auth';
+import { requireAdmin } from '../../middleware/requireRole';
 import { AppError } from '../../middleware/errorHandler';
 import { generateSimulatedLinkedInApplicants, extractLinkedInProfileFromText } from '../../services/ai.service';
 import { createInterviewAndSendInvite } from '../candidate.routes';
@@ -52,7 +53,9 @@ router.get('/status', async (req, res, next) => {
 // GET /api/integrations/linkedin/auth — simulated OAuth initiation.
 // No real request to linkedin.com is made; the frontend shows its own
 // simulated consent step and then calls /callback to finish "connecting".
-router.get('/auth', async (_req, res, next) => {
+// Admin-only: "only admin can connect integrations" — this and /callback
+// together ARE the connect action, even though neither is a POST.
+router.get('/auth', requireAdmin, async (_req, res, next) => {
   try {
     res.json({
       success: true,
@@ -65,7 +68,7 @@ router.get('/auth', async (_req, res, next) => {
 });
 
 // GET /api/integrations/linkedin/callback — finalizes the simulated connection.
-router.get('/callback', async (req, res, next) => {
+router.get('/callback', requireAdmin, async (req, res, next) => {
   try {
     const integration = await prisma.integration.upsert({
       where: { organizationId_provider: { organizationId: req.user!.organizationId, provider: 'LINKEDIN' } },

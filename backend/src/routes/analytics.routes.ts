@@ -2,12 +2,13 @@
 import { Router } from 'express';
 import { prisma } from '../config/db';
 import { authenticate } from '../middleware/auth';
+import { requireAdmin } from '../middleware/requireRole';
 
 const router = Router();
 router.use(authenticate);
 
-// GET /api/analytics — org-level analytics
-router.get('/', async (req, res, next) => {
+// GET /api/analytics — org-level analytics (admin only)
+router.get('/', requireAdmin, async (req, res, next) => {
   try {
     const orgId = req.user!.organizationId;
     const days = parseInt(req.query.days as string) || 30;

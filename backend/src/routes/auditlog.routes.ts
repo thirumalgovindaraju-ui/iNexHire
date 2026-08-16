@@ -2,12 +2,13 @@
 import { Router } from 'express';
 import { prisma } from '../config/db';
 import { authenticate } from '../middleware/auth';
+import { requireAdmin } from '../middleware/requireRole';
 
 const router = Router();
 router.use(authenticate);
 
-// GET /api/audit-logs — paginated audit log for this org
-router.get('/', async (req, res, next) => {
+// GET /api/audit-logs — paginated audit log for this org (admin only)
+router.get('/', requireAdmin, async (req, res, next) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 50;

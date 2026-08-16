@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../config/db';
 import { authenticate } from '../middleware/auth';
+import { requireAdmin } from '../middleware/requireRole';
 import { validate } from '../middleware/validate';
 import { AppError } from '../middleware/errorHandler';
 import { sendInterviewInvite } from '../services/email.service';
@@ -10,6 +11,15 @@ import { env } from '../config/env';
 
 const router = Router();
 router.use(authenticate);
+
+// Admins see every opening in the org; recruiters are scoped to openings they
+// personally created — used everywhere this file looks up an opening/candidate.
+function openingScope(req: any) {
+  return {
+    organizationId: req.user!.organizationId,
+    ...(req.user!.role !== 'ADMIN' ? { createdById: req.user!.userId } : {}),
+  };
+}
 
 const addCandidateSchema = z.object({
   name: z.string().min(2),
@@ -35,16 +45,16 @@ router.get('/', async (req, res, next) => {
     const { openingId, page = '1', limit = '20', search } = req.query as Record<string, string>;
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    // Verify opening belongs to this org if provided
+    // Verify opening belongs to this org (and, for recruiters, that they created it) if provided
     if (openingId) {
       const opening = await prisma.opening.findFirst({
-        where: { id: openingId, organizationId: req.user!.organizationId },
+        where: { id: openingId, ...openingScope(req) },
       });
       if (!opening) throw new AppError(404, 'Opening not found');
     }
 
     const where: any = {
-      opening: { organizationId: req.user!.organizationId },
+      opening: openingScope(req),
       ...(openingId ? { openingId } : {}),
       ...(search ? {
         OR: [
@@ -84,7 +94,7 @@ router.get('/:id', async (req, res, next) => {
     const candidate = await prisma.candidate.findFirst({
       where: {
         id: req.params.id,
-        opening: { organizationId: req.user!.organizationId },
+        opening: openingScope(req),
       },
       include: {
         opening: { select: { id: true, title: true, skills: true } },
@@ -109,9 +119,9 @@ router.post('/', validate(addCandidateSchema), async (req, res, next) => {
   try {
     const { sendInvite, ...candidateData } = req.body;
 
-    // Verify opening belongs to this org
+    // Verify opening belongs to this org (and, for recruiters, that they created it)
     const opening = await prisma.opening.findFirst({
-      where: { id: candidateData.openingId, organizationId: req.user!.organizationId },
+      where: { id: candidateData.openingId, ...openingScope(req) },
       include: { organization: true },
     });
     if (!opening) throw new AppError(404, 'Opening not found');
@@ -135,7 +145,7 @@ router.post('/bulk', validate(bulkAddSchema), async (req, res, next) => {
     const { openingId, candidates, sendInvites } = req.body;
 
     const opening = await prisma.opening.findFirst({
-      where: { id: openingId, organizationId: req.user!.organizationId },
+      where: { id: openingId, ...openingScope(req) },
       include: { organization: true },
     });
     if (!opening) throw new AppError(404, 'Opening not found');
@@ -179,7 +189,7 @@ router.post('/:id/send-invite', async (req, res, next) => {
     const candidate = await prisma.candidate.findFirst({
       where: {
         id: req.params.id,
-        opening: { organizationId: req.user!.organizationId },
+        opening: openingScope(req),
       },
       include: {
         opening: { include: { organization: true } },
@@ -209,6 +219,20 @@ router.post('/:id/send-invite', async (req, res, next) => {
     }
 
     res.json({ success: true, interview });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/candidates/:id — admin only
+router.delete('/:id', requireAdmin, async (req, res, next) => {
+  try {
+    const candidate = await prisma.candidate.findFirst({
+      where: { id: req.params.id, opening: { organizationId: req.user!.organizationId } },
+    });
+    if (!candidate) throw new AppError(404, 'Candidate not found');
+    await prisma.candidate.delete({ where: { id: req.params.id } });
+    res.json({ success: true });
   } catch (err) {
     next(err);
   }

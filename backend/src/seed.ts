@@ -57,6 +57,19 @@ async function main() {
     },
   });
 
+  const adminPasswordHash = await bcrypt.hash('admin123', 12);
+  await prisma.user.upsert({
+    where: { email: 'admin@nexhire.com' },
+    update: {},
+    create: {
+      name: 'Demo Admin',
+      email: 'admin@nexhire.com',
+      passwordHash: adminPasswordHash,
+      role: 'ADMIN',
+      organizationId: org.id,
+    },
+  });
+
   // Create an opening
   const opening = await prisma.opening.upsert({
     where: { id: 'seed-opening-001' },
@@ -140,6 +153,10 @@ async function main() {
 Recruiter login:
   Email: recruiter@acme.com
   Password: password123
+
+Admin login:
+  Email: admin@nexhire.com
+  Password: admin123
 
 Demo interview link:
   http://localhost:5173/interview/demo-interview-token-123

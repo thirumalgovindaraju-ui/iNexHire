@@ -5,6 +5,7 @@ import { prisma } from '../config/db';
 import { authenticate } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { AppError } from '../middleware/errorHandler';
+import { describeProctorEvent } from '../services/sseProctoring.service';
 
 const router = Router();
 router.use(authenticate);
@@ -14,7 +15,14 @@ router.get('/', async (req, res, next) => {
   try {
     const reports = await prisma.report.findMany({
       where: {
-        interview: { candidate: { opening: { organizationId: req.user!.organizationId } } },
+        interview: {
+          candidate: {
+            opening: {
+              organizationId: req.user!.organizationId,
+              ...(req.user!.role !== 'ADMIN' ? { createdById: req.user!.userId } : {}),
+            },
+          },
+        },
       },
       orderBy: { overallScore: 'desc' },
       include: {
@@ -40,7 +48,12 @@ router.get('/:interviewId', async (req, res, next) => {
     const interview = await prisma.interview.findFirst({
       where: {
         id: req.params.interviewId,
-        candidate: { opening: { organizationId: req.user!.organizationId } },
+        candidate: {
+          opening: {
+            organizationId: req.user!.organizationId,
+            ...(req.user!.role !== 'ADMIN' ? { createdById: req.user!.userId } : {}),
+          },
+        },
       },
       include: {
         candidate: {
@@ -90,10 +103,15 @@ router.get('/:interviewId', async (req, res, next) => {
         })),
         proctorSummary: {
           totalEvents: interview.proctorLogs.length,
-          events: interview.proctorLogs.map((l) => ({
-            type: l.eventType,
-            timestamp: l.timestamp,
-          })),
+          bySeverity: interview.proctorLogs.reduce((acc, l) => {
+            const { severity } = describeProctorEvent(l.eventType);
+            acc[severity] = (acc[severity] ?? 0) + 1;
+            return acc;
+          }, {} as Record<string, number>),
+          events: interview.proctorLogs.map((l) => {
+            const { severity, description } = describeProctorEvent(l.eventType);
+            return { type: l.eventType, timestamp: l.timestamp, severity, description };
+          }),
         },
       },
     });
@@ -113,7 +131,12 @@ router.patch('/:interviewId/decision', validate(decisionSchema), async (req, res
     const interview = await prisma.interview.findFirst({
       where: {
         id: req.params.interviewId,
-        candidate: { opening: { organizationId: req.user!.organizationId } },
+        candidate: {
+          opening: {
+            organizationId: req.user!.organizationId,
+            ...(req.user!.role !== 'ADMIN' ? { createdById: req.user!.userId } : {}),
+          },
+        },
       },
       include: { report: true },
     });

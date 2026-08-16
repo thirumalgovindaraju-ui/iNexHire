@@ -43,6 +43,9 @@ enum ProctorEventType {
   COPY_PASTE
   FULLSCREEN_EXIT
   MIC_MUTED
+  LOOKING_AWAY
+  BACKGROUND_VOICE
+  SUSPICIOUS_PAUSE
 }
 
 // ─── Models ───────────────────────────────────────────────────────────────────

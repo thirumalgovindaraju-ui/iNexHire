@@ -30,6 +30,7 @@ import templatesRoutes from './routes/templates.routes';
 import epfoRoutes from './routes/epfo.routes';
 import linkedinRoutes from './routes/integrations/linkedin.routes';
 import liveVideoRoutes from './routes/livevideo.routes';
+import proctoringRoutes from './routes/proctoring.routes';
 
 export function createApp() {
   const app = express();
@@ -92,6 +93,7 @@ export function createApp() {
   app.use('/api/epfo', epfoRoutes);
   app.use('/api/integrations/linkedin', linkedinRoutes);
   app.use('/api/live-video', liveVideoRoutes);
+  app.use('/api/proctoring', proctoringRoutes);
 
   // ─── 404 ───────────────────────────────────────────────────────────────────
   app.use((_req, res) => {

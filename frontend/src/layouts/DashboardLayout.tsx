@@ -13,7 +13,7 @@ const NAV = [
     { to: '/candidates', icon: Users, label: 'Candidates' },
     { to: '/live-interviews', icon: Video, label: 'Live Interviews', badge: 'NEW' },
     { to: '/pipeline', icon: GitBranch, label: 'Pipeline Board' },
-    { to: '/analytics', icon: BarChart2, label: 'Analytics' },
+    { to: '/analytics', icon: BarChart2, label: 'Analytics', adminOnly: true },
     { to: '/rankings', icon: Trophy, label: 'Candidate Ranking' },
   ]},
   { section: 'AI Intelligence', items: [
@@ -32,14 +32,14 @@ const NAV = [
     { to: '/offers', icon: FileText, label: 'Offer Letters' },
     { to: '/talent-pool', icon: Database, label: 'Talent Pool' },
     { to: '/languages', icon: Globe, label: 'Multilingual' },
-    { to: '/integrations', icon: Zap, label: 'Integrations' },
+    { to: '/integrations', icon: Zap, label: 'Integrations', adminOnly: true },
     { to: '/branding', icon: Palette, label: 'White-label' },
   ]},
   { section: 'Settings', items: [
-    { to: '/settings/team', icon: UserCog, label: 'Team & Roles' },
-    { to: '/settings/sso', icon: Key, label: 'SSO & Security' },
+    { to: '/settings/team', icon: UserCog, label: 'Team & Roles', adminOnly: true },
+    { to: '/settings/sso', icon: Key, label: 'SSO & Security', adminOnly: true },
     { to: '/notifications', icon: Bell, label: 'Notifications' },
-    { to: '/audit', icon: Clock, label: 'Audit Logs' },
+    { to: '/audit', icon: Clock, label: 'Audit Logs', adminOnly: true },
   ]},
 ];
 
@@ -47,6 +47,14 @@ export default function DashboardLayout() {
   const { user, refreshToken, logout } = useAuthStore();
   const navigate = useNavigate();
   const [_n, setN] = useState(false);
+  const isAdmin = user?.role === 'ADMIN';
+
+  const visibleNav = NAV
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item: any) => !item.adminOnly || isAdmin),
+    }))
+    .filter((section) => section.items.length > 0);
 
   async function handleLogout() {
     if (refreshToken) await authApi.logout(refreshToken).catch(() => {});
@@ -71,7 +79,7 @@ export default function DashboardLayout() {
           </div>
         </div>
         <nav style={{ flex: 1, padding: '4px 8px 8px', overflowY: 'auto' }}>
-          {NAV.map(section => (
+          {visibleNav.map(section => (
             <div key={section.section}>
               <p style={{ fontSize: 9.5, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.07em', padding: '12px 10px 5px', fontWeight: 600, margin: 0 }}>{section.section}</p>
               {section.items.map(({ to, icon: Icon, label, badge }: any) => (
@@ -96,7 +104,18 @@ export default function DashboardLayout() {
               {user?.name?.charAt(0).toUpperCase()}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ color: '#fff', fontSize: 11.5, fontWeight: 500, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name}</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <p style={{ color: '#fff', fontSize: 11.5, fontWeight: 500, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name}</p>
+                {user?.role && (
+                  <span style={{
+                    fontSize: 8, fontWeight: 700, borderRadius: 4, padding: '1px 5px', flexShrink: 0,
+                    background: isAdmin ? '#f59e0b' : '#4f46e5',
+                    color: '#fff',
+                  }}>
+                    {user.role}
+                  </span>
+                )}
+              </div>
               <p style={{ color: '#475569', fontSize: 10, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.organization?.name}</p>
             </div>
             <button onClick={handleLogout} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#475569', padding: 4, borderRadius: 6, flexShrink: 0 }}><LogOut size={13} /></button>

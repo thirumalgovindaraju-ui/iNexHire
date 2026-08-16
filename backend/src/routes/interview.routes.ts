@@ -6,6 +6,7 @@ import { authenticate } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { AppError } from '../middleware/errorHandler';
 import { enqueueEvaluation } from '../jobs/evaluation.job';
+import { broadcastProctoringEvent } from '../services/sseProctoring.service';
 
 const router = Router();
 
@@ -17,9 +18,18 @@ router.get('/', authenticate, async (req, res, next) => {
     const { openingId, status, page = '1', limit = '20' } = req.query as Record<string, string>;
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
+    // Note: openingId and the opening-ownership filter must live inside the
+    // same `candidate` key — two separate `candidate: {...}` spreads here
+    // would silently clobber each other (object spread, last key wins),
+    // which is what this used to do whenever openingId was passed.
     const where: any = {
-      candidate: { opening: { organizationId: req.user!.organizationId } },
-      ...(openingId ? { candidate: { openingId } } : {}),
+      candidate: {
+        opening: {
+          organizationId: req.user!.organizationId,
+          ...(req.user!.role !== 'ADMIN' ? { createdById: req.user!.userId } : {}),
+        },
+        ...(openingId ? { openingId } : {}),
+      },
       ...(status ? { status } : {}),
     };
 
@@ -154,6 +164,10 @@ router.post('/:id/proctor-event', async (req, res, next) => {
     await prisma.proctorLog.create({
       data: { interviewId: req.params.id, eventType, metadata },
     });
+
+    // Push to any recruiter currently watching this interview's live SSE stream.
+    // No-op if nobody is connected.
+    broadcastProctoringEvent(req.params.id, eventType);
 
     res.json({ success: true });
   } catch (err) {

@@ -4,9 +4,17 @@
 // join the same Jitsi Meet room via its roomName.
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Video, Clock, StickyNote, LogOut, AlertTriangle } from 'lucide-react';
+import { Video, Clock, StickyNote, LogOut, AlertTriangle, ShieldAlert } from 'lucide-react';
 import { Button, Spinner } from '../../components/ui';
 import { liveVideoApi } from '../../services/api';
+import { useProctoringAlerts } from '../../hooks/useProctoringAlerts';
+
+const SEVERITY_META: Record<string, { emoji: string; color: string; bg: string }> = {
+  CRITICAL: { emoji: '🔴', color: '#f43f5e', bg: '#fff1f2' },
+  HIGH: { emoji: '🟡', color: '#b45309', bg: '#fffbeb' },
+  MEDIUM: { emoji: '🟠', color: '#ea580c', bg: '#fff7ed' },
+  LOW: { emoji: '🔵', color: '#3b82f6', bg: '#eff6ff' },
+};
 
 interface Question { id: string; text: string; type: string; }
 interface LiveInterview {
@@ -32,6 +40,10 @@ export default function LiveInterviewRoom() {
   const [error, setError] = useState<string | null>(null);
   const [ending, setEnding] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Called unconditionally (Rules of Hooks) — no-ops for the candidate view
+  // since interviewId is undefined on that route.
+  const { alerts, clearAlerts } = useProctoringAlerts(interviewId);
 
   useEffect(() => {
     async function load() {
@@ -164,26 +176,76 @@ export default function LiveInterviewRoom() {
         </div>
       </div>
 
-      {/* Side panel: questions + notes */}
-      <div style={{ width: 320, background: '#fff', borderLeft: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '14px 16px', borderBottom: '1px solid #e2e8f0', fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
-          Interview Questions
-        </div>
-        <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
-          {questions.length === 0 ? (
-            <div style={{ fontSize: 12, color: '#94a3b8' }}>No questions on this opening yet.</div>
-          ) : (
-            questions.map((q, i) => (
-              <div key={q.id} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: i < questions.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: '#4f46e5', flexShrink: 0 }}>Q{i + 1}</span>
-                  <span style={{ fontSize: 12.5, color: '#334155', lineHeight: 1.5 }}>{q.text}</span>
+      {/* Side panel: questions + integrity alerts + notes */}
+      <div style={{ width: 340, background: '#fff', borderLeft: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        {/* Questions */}
+        <div style={{ flex: '1 1 0', display: 'flex', flexDirection: 'column', minHeight: 0, borderBottom: '1px solid #e2e8f0' }}>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid #e2e8f0', fontSize: 13, fontWeight: 600, color: '#0f172a', flexShrink: 0 }}>
+            Interview Questions
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '10px 16px' }}>
+            {questions.length === 0 ? (
+              <div style={{ fontSize: 12, color: '#94a3b8' }}>No questions on this opening yet.</div>
+            ) : (
+              questions.map((q, i) => (
+                <div key={q.id} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: i < questions.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: '#4f46e5', flexShrink: 0 }}>Q{i + 1}</span>
+                    <span style={{ fontSize: 12.5, color: '#334155', lineHeight: 1.5 }}>{q.text}</span>
+                  </div>
                 </div>
-              </div>
-            ))
-          )}
+              ))
+            )}
+          </div>
         </div>
-        <div style={{ borderTop: '1px solid #e2e8f0', padding: '14px 16px' }}>
+
+        {/* Integrity alerts — real-time via SSE */}
+        <div style={{ flex: '1 1 0', display: 'flex', flexDirection: 'column', minHeight: 0, borderBottom: '1px solid #e2e8f0' }}>
+          <div
+            key={alerts.length}
+            style={{
+              padding: '10px 16px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+              animation: alerts.length > 0 ? 'alertFlash 0.8s ease' : undefined,
+            }}
+          >
+            <ShieldAlert size={13} style={{ color: '#f43f5e' }} />
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#0f172a', flex: 1 }}>Integrity Alerts</span>
+            {alerts.length > 0 && (
+              <span style={{ fontSize: 10, fontWeight: 700, background: '#f43f5e', color: '#fff', borderRadius: 9, padding: '1px 7px', flexShrink: 0 }}>
+                {alerts.length}
+              </span>
+            )}
+            <button
+              onClick={clearAlerts}
+              disabled={alerts.length === 0}
+              style={{ fontSize: 10.5, color: alerts.length ? '#4f46e5' : '#cbd5e1', background: 'none', border: 'none', cursor: alerts.length ? 'pointer' : 'default', fontWeight: 500, flexShrink: 0 }}
+            >
+              Clear Alerts
+            </button>
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px' }}>
+            {alerts.length === 0 ? (
+              <div style={{ fontSize: 11.5, color: '#94a3b8', padding: '6px 4px' }}>No integrity alerts yet.</div>
+            ) : (
+              [...alerts].reverse().map((a, i) => {
+                const meta = SEVERITY_META[a.severity] ?? SEVERITY_META.LOW;
+                const time = new Date(a.timestamp).toLocaleTimeString('en-GB');
+                return (
+                  <div key={`${a.timestamp}-${i}`} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', background: meta.bg, borderRadius: 6, padding: '6px 8px', marginBottom: 6, fontSize: 11.5, lineHeight: 1.5 }}>
+                    <span style={{ flexShrink: 0 }}>{meta.emoji}</span>
+                    <span>
+                      <strong style={{ color: meta.color }}>{a.severity}:</strong> {a.description}{' '}
+                      <span style={{ color: '#94a3b8' }}>({time})</span>
+                    </span>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* Notes — session-local only, not persisted */}
+        <div style={{ padding: '12px 16px', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
             <StickyNote size={13} style={{ color: '#f59e0b' }} />
             <span style={{ fontSize: 12, fontWeight: 600, color: '#0f172a' }}>Notes (this session only)</span>
@@ -192,11 +254,12 @@ export default function LiveInterviewRoom() {
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             placeholder="Jot notes while you talk — not saved after this session..."
-            rows={6}
+            rows={4}
             style={{ width: '100%', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 10px', fontSize: 12.5, outline: 'none', resize: 'vertical', fontFamily: 'inherit' }}
           />
         </div>
       </div>
+      <style>{`@keyframes alertFlash { 0% { background: #fee2e2; } 100% { background: transparent; } }`}</style>
     </div>
   );
 }

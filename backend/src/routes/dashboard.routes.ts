@@ -6,10 +6,13 @@ import { authenticate } from '../middleware/auth';
 const router = Router();
 router.use(authenticate);
 
-// GET /api/dashboard
+// GET /api/dashboard — admins see org-wide stats; recruiters see only
+// openings they personally created (and everything under those openings).
 router.get('/', async (req, res, next) => {
   try {
     const orgId = req.user!.organizationId;
+    const isAdmin = req.user!.role === 'ADMIN';
+    const openingFilter = { organizationId: orgId, ...(isAdmin ? {} : { createdById: req.user!.userId }) };
 
     const [
       totalOpenings,
@@ -21,18 +24,18 @@ router.get('/', async (req, res, next) => {
       recentInterviews,
       recentOpenings,
     ] = await Promise.all([
-      prisma.opening.count({ where: { organizationId: orgId } }),
-      prisma.opening.count({ where: { organizationId: orgId, isActive: true } }),
-      prisma.candidate.count({ where: { opening: { organizationId: orgId } } }),
-      prisma.interview.count({ where: { candidate: { opening: { organizationId: orgId } } } }),
+      prisma.opening.count({ where: openingFilter }),
+      prisma.opening.count({ where: { ...openingFilter, isActive: true } }),
+      prisma.candidate.count({ where: { opening: openingFilter } }),
+      prisma.interview.count({ where: { candidate: { opening: openingFilter } } }),
       prisma.interview.count({
-        where: { candidate: { opening: { organizationId: orgId } }, status: 'COMPLETED' },
+        where: { candidate: { opening: openingFilter }, status: 'COMPLETED' },
       }),
       prisma.interview.count({
-        where: { candidate: { opening: { organizationId: orgId } }, status: 'EVALUATED' },
+        where: { candidate: { opening: openingFilter }, status: 'EVALUATED' },
       }),
       prisma.interview.findMany({
-        where: { candidate: { opening: { organizationId: orgId } } },
+        where: { candidate: { opening: openingFilter } },
         take: 10,
         orderBy: { updatedAt: 'desc' },
         include: {
@@ -41,7 +44,7 @@ router.get('/', async (req, res, next) => {
         },
       }),
       prisma.opening.findMany({
-        where: { organizationId: orgId },
+        where: openingFilter,
         take: 5,
         orderBy: { createdAt: 'desc' },
         include: { _count: { select: { candidates: true } } },
@@ -50,7 +53,7 @@ router.get('/', async (req, res, next) => {
 
     // Average score from evaluated interviews
     const reportsWithScores = await prisma.report.findMany({
-      where: { interview: { candidate: { opening: { organizationId: orgId } } } },
+      where: { interview: { candidate: { opening: openingFilter } } },
       select: { overallScore: true, recommendation: true },
     });
 

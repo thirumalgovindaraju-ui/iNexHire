@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../config/db';
 import { authenticate } from '../middleware/auth';
+import { requireAdmin } from '../middleware/requireRole';
 import { validate } from '../middleware/validate';
 import { AppError } from '../middleware/errorHandler';
 import {
@@ -43,7 +44,8 @@ const LEVEL_TO_DIFFICULTY: Record<string, 'EASY' | 'MEDIUM' | 'HARD'> = {
   MANAGER: 'HARD',
 };
 
-// GET /api/openings
+// GET /api/openings — admins see every opening in the org; recruiters see
+// only openings they personally created.
 router.get('/', async (req, res, next) => {
   try {
     const { page = '1', limit = '20', search } = req.query as Record<string, string>;
@@ -51,6 +53,7 @@ router.get('/', async (req, res, next) => {
 
     const where = {
       organizationId: req.user!.organizationId,
+      ...(req.user!.role !== 'ADMIN' ? { createdById: req.user!.userId } : {}),
       ...(search ? { title: { contains: search, mode: 'insensitive' as const } } : {}),
     };
 
@@ -77,7 +80,11 @@ router.get('/', async (req, res, next) => {
 router.get('/:id', async (req, res, next) => {
   try {
     const opening = await prisma.opening.findFirst({
-      where: { id: req.params.id, organizationId: req.user!.organizationId },
+      where: {
+        id: req.params.id,
+        organizationId: req.user!.organizationId,
+        ...(req.user!.role !== 'ADMIN' ? { createdById: req.user!.userId } : {}),
+      },
       include: {
         questions: { orderBy: { order: 'asc' } },
         _count: { select: { candidates: true } },
@@ -113,7 +120,11 @@ router.post('/', validate(createOpeningSchema), async (req, res, next) => {
 router.patch('/:id', validate(updateOpeningSchema), async (req, res, next) => {
   try {
     const existing = await prisma.opening.findFirst({
-      where: { id: req.params.id, organizationId: req.user!.organizationId },
+      where: {
+        id: req.params.id,
+        organizationId: req.user!.organizationId,
+        ...(req.user!.role !== 'ADMIN' ? { createdById: req.user!.userId } : {}),
+      },
     });
     if (!existing) throw new AppError(404, 'Opening not found');
 
@@ -129,8 +140,8 @@ router.patch('/:id', validate(updateOpeningSchema), async (req, res, next) => {
   }
 });
 
-// DELETE /api/openings/:id
-router.delete('/:id', async (req, res, next) => {
+// DELETE /api/openings/:id — admin only
+router.delete('/:id', requireAdmin, async (req, res, next) => {
   try {
     const existing = await prisma.opening.findFirst({
       where: { id: req.params.id, organizationId: req.user!.organizationId },
@@ -204,7 +215,11 @@ router.post('/generate-jd', async (req, res, next) => {
 router.post('/:id/generate-questions', async (req, res, next) => {
   try {
     const opening = await prisma.opening.findFirst({
-      where: { id: req.params.id, organizationId: req.user!.organizationId },
+      where: {
+        id: req.params.id,
+        organizationId: req.user!.organizationId,
+        ...(req.user!.role !== 'ADMIN' ? { createdById: req.user!.userId } : {}),
+      },
     });
     if (!opening) throw new AppError(404, 'Opening not found');
 

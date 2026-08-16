@@ -41,6 +41,15 @@ export function errorHandler(
     });
   }
 
+  // Prisma foreign key constraint violation (e.g. deleting a candidate/opening
+  // that still has interviews, responses, or other records referencing it)
+  if ((err as any).code === 'P2003') {
+    return res.status(409).json({
+      success: false,
+      error: 'Cannot delete — other records still reference this item',
+    });
+  }
+
   console.error('[Unhandled Error]', err);
   return res.status(500).json({
     success: false,
