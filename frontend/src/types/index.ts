@@ -116,9 +116,17 @@ export interface DashboardMetrics {
 // Interview session (candidate side)
 export interface InterviewSession {
   interviewId: string;
+  organizationId: string;
   candidate: { id: string; name: string; email: string };
   opening: { title: string; organization: string };
   questions: Question[];
   totalQuestions: number;
   answeredCount: number;
+}
+
+export interface PublicBranding {
+  companyName: string | null;
+  logoUrl: string | null;
+  primaryColor: string | null;
+  tagline: string | null;
 }

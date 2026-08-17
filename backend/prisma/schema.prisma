@@ -65,6 +65,7 @@ model Organization {
   notifications     Notification[]
   naukriCandidates  NaukriCandidate[]
   compensationBenchmarks CompensationBenchmark[]
+  brandingConfig    BrandingConfig?
 
   @@map("organizations")
 }
@@ -626,4 +627,28 @@ model CompensationBenchmark {
   organization Organization @relation(fields: [organizationId], references: [id])
 
   @@map("compensation_benchmarks")
+}
+
+// ─── White-label Branding ────────────────────────────────────────────────────
+// logoUrl may be a data: URI (base64) rather than a real object-storage URL —
+// see storage.service.ts uploadImage() for why (no real upload backend is wired
+// up yet, and a logo needs to actually render, unlike the audio upload stub).
+
+model BrandingConfig {
+  id             String   @id @default(cuid())
+  organizationId String   @unique
+  companyName    String?
+  domain         String?
+  logoUrl        String?  @db.Text
+  primaryColor   String   @default("#4f46e5")
+  accentColor    String   @default("#10b981")
+  fontFamily     String   @default("Inter")
+  welcomeMsg     String?  @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@map("branding_configs")
 }

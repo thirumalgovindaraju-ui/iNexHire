@@ -1,17 +1,78 @@
-// src/pages/recruiter/WhiteLabel.tsx — NEW: White-label & Branding
-import { useState } from 'react';
-import { Palette, Globe, Upload, CheckCircle, Eye } from 'lucide-react';
-import { Button } from '../../components/ui';
+// src/pages/recruiter/WhiteLabel.tsx — wired to real backend
+import { useState, useEffect, useRef } from 'react';
+import { Palette, Globe, Upload, CheckCircle, Eye, Loader2 } from 'lucide-react';
+import { Button, Spinner, useToast } from '../../components/ui';
+import { brandingApi, extractError } from '../../services/api';
+
+const DEFAULT_FORM = { companyName: 'Acme Corp', domain: 'hiring.acme.com', primaryColor: '#4f46e5', accentColor: '#10b981', logoUrl: '', welcomeMsg: 'Welcome to our AI Interview Platform. Good luck!', fontFamily: 'Inter' };
 
 export default function WhiteLabel() {
-  const [form, setForm] = useState({ companyName: 'Acme Corp', domain: 'hiring.acme.com', primaryColor: '#4f46e5', accentColor: '#10b981', logoUrl: '', welcomeMsg: 'Welcome to our AI Interview Platform. Good luck!', fontFamily: 'Inter' });
+  const { show, ToastContainer } = useToast();
+  const [form, setForm] = useState(DEFAULT_FORM);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const FONTS = ['Inter', 'Poppins', 'Outfit', 'DM Sans', 'Plus Jakarta Sans'];
   const PRESETS = [{ name: 'Indigo', primary: '#4f46e5', accent: '#10b981' }, { name: 'Slate', primary: '#0f172a', accent: '#3b82f6' }, { name: 'Rose', primary: '#e11d48', accent: '#f59e0b' }, { name: 'Teal', primary: '#0d9488', accent: '#8b5cf6' }];
 
+  useEffect(() => {
+    brandingApi.get()
+      .then((branding) => {
+        if (branding) {
+          setForm({
+            companyName: branding.companyName ?? DEFAULT_FORM.companyName,
+            domain: branding.domain ?? DEFAULT_FORM.domain,
+            primaryColor: branding.primaryColor ?? DEFAULT_FORM.primaryColor,
+            accentColor: branding.accentColor ?? DEFAULT_FORM.accentColor,
+            logoUrl: branding.logoUrl ?? '',
+            welcomeMsg: branding.welcomeMsg ?? DEFAULT_FORM.welcomeMsg,
+            fontFamily: branding.fontFamily ?? DEFAULT_FORM.fontFamily,
+          });
+        }
+      })
+      .catch((err) => show(extractError(err), 'error'))
+      .finally(() => setLoading(false));
+  }, [show]);
+
+  async function publishChanges() {
+    setSaving(true);
+    setSaved(false);
+    try {
+      await brandingApi.save(form);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err) {
+      show(extractError(err), 'error');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleLogoFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploadingLogo(true);
+    try {
+      const url = await brandingApi.uploadLogo(file);
+      setForm((f) => ({ ...f, logoUrl: url }));
+    } catch (err) {
+      show(extractError(err), 'error');
+    } finally {
+      setUploadingLogo(false);
+    }
+  }
+
+  if (loading) {
+    return <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><Spinner size={28} /></div>;
+  }
+
   return (
     <div style={{ padding: '24px 28px', maxWidth: 1100, margin: '0 auto' }}>
+      <ToastContainer />
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: '#0f172a', marginBottom: 3 }}>White-label & Branding</h1>
@@ -19,7 +80,7 @@ export default function WhiteLabel() {
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
           <Button variant="secondary" icon={<Eye size={14} />}>Preview Portal</Button>
-          <Button icon={<CheckCircle size={14} />} onClick={() => setSaved(true)}>{saved ? '✓ Published!' : 'Publish Changes'}</Button>
+          <Button icon={<CheckCircle size={14} />} loading={saving} onClick={publishChanges}>{saved ? '✓ Published!' : 'Publish Changes'}</Button>
         </div>
       </div>
 
@@ -40,9 +101,19 @@ export default function WhiteLabel() {
             </div>
             <div style={{ marginTop: 12 }}>
               <label style={{ fontSize: 12, fontWeight: 500, color: '#334155', marginBottom: 5, display: 'block' }}>Company Logo</label>
-              <div style={{ border: '2px dashed #e2e8f0', borderRadius: 8, padding: '20px', textAlign: 'center', cursor: 'pointer', color: '#94a3b8', fontSize: 13 }}>
-                <Upload size={20} style={{ margin: '0 auto 8px', display: 'block' }} />
-                Drop logo here or click to upload (SVG, PNG — max 2MB)
+              <input ref={fileInputRef} type="file" accept="image/png,image/svg+xml,image/jpeg,image/webp" onChange={handleLogoFile} style={{ display: 'none' }} />
+              <div
+                onClick={() => !uploadingLogo && fileInputRef.current?.click()}
+                style={{ border: '2px dashed #e2e8f0', borderRadius: 8, padding: '20px', textAlign: 'center', cursor: uploadingLogo ? 'default' : 'pointer', color: '#94a3b8', fontSize: 13 }}
+              >
+                {uploadingLogo ? (
+                  <Loader2 size={20} className="animate-spin" style={{ margin: '0 auto 8px', display: 'block' }} />
+                ) : form.logoUrl ? (
+                  <img src={form.logoUrl} alt="Logo preview" style={{ maxHeight: 40, maxWidth: '100%', margin: '0 auto 8px', display: 'block' }} />
+                ) : (
+                  <Upload size={20} style={{ margin: '0 auto 8px', display: 'block' }} />
+                )}
+                {uploadingLogo ? 'Uploading...' : form.logoUrl ? 'Click to replace logo' : 'Drop logo here or click to upload (SVG, PNG — max 2MB)'}
               </div>
             </div>
           </div>
@@ -101,8 +172,12 @@ export default function WhiteLabel() {
           {/* Candidate portal preview */}
           <div style={{ background: '#f8fafc' }}>
             <div style={{ background: form.primaryColor, padding: '16px', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ width: 28, height: 28, background: 'rgba(255,255,255,0.2)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span style={{ color: '#fff', fontSize: 12, fontWeight: 700 }}>{form.companyName.charAt(0)}</span>
+              <div style={{ width: 28, height: 28, background: 'rgba(255,255,255,0.2)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                {form.logoUrl ? (
+                  <img src={form.logoUrl} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                ) : (
+                  <span style={{ color: '#fff', fontSize: 12, fontWeight: 700 }}>{form.companyName.charAt(0)}</span>
+                )}
               </div>
               <span style={{ color: '#fff', fontSize: 13, fontWeight: 600 }}>{form.companyName}</span>
             </div>

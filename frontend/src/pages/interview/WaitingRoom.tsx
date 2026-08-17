@@ -2,9 +2,10 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Mic, Camera, CheckCircle, XCircle, Loader2, AlertCircle } from 'lucide-react';
-import { interviewsApi, extractError } from '../../services/api';
+import { interviewsApi, brandingApi, extractError } from '../../services/api';
 import { useInterviewStore } from '../../store/interviewStore';
 import { Button, Spinner } from '../../components/ui';
+import type { PublicBranding } from '../../types';
 
 type CheckStatus = 'idle' | 'checking' | 'ok' | 'error';
 
@@ -21,12 +22,16 @@ export default function WaitingRoom() {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [agreed, setAgreed] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [branding, setBranding] = useState<PublicBranding | null>(null);
 
   useEffect(() => {
     if (!token) return;
     interviewsApi.startSession(token).then((data) => {
       setSessionData(data);
       setSession(data);
+      if (data.organizationId) {
+        brandingApi.getPublic(data.organizationId).then(setBranding).catch(() => {});
+      }
     }).catch((err) => {
       setError(extractError(err));
     }).finally(() => setLoading(false));
@@ -87,11 +92,14 @@ export default function WaitingRoom() {
       <div className="w-full max-w-2xl">
         {/* Header */}
         <div className="text-center mb-8">
+          {branding?.logoUrl && (
+            <img src={branding.logoUrl} alt={branding.companyName ?? 'Company logo'} className="h-10 mx-auto mb-4 object-contain" />
+          )}
           <h1 className="text-2xl font-bold text-white mb-1">
             Hi, {sessionData?.candidate?.name?.split(' ')[0]}!
           </h1>
           <p className="text-surface-300">
-            {sessionData?.opening?.title} · {sessionData?.opening?.organization}
+            {sessionData?.opening?.title} · {branding?.companyName ?? sessionData?.opening?.organization}
           </p>
         </div>
 

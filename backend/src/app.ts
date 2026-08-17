@@ -37,6 +37,7 @@ import codingRoutes from './routes/coding.routes';
 import groupDiscussionRoutes from './routes/groupdiscussion.routes';
 import highlightsRoutes from './routes/highlights.routes';
 import compensationRoutes from './routes/compensation.routes';
+import brandingRoutes from './routes/branding.routes';
 
 export function createApp() {
   const app = express();
@@ -106,6 +107,7 @@ export function createApp() {
   app.use('/api/gd', groupDiscussionRoutes);
   app.use('/api/highlights', highlightsRoutes);
   app.use('/api/compensation', compensationRoutes);
+  app.use('/api/branding', brandingRoutes);
 
   // ─── 404 ───────────────────────────────────────────────────────────────────
   app.use((_req, res) => {

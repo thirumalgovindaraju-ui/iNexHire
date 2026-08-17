@@ -2,10 +2,11 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Mic, MicOff, SkipForward, ChevronRight, Clock, CheckCircle } from 'lucide-react';
-import { interviewsApi, uploadApi, extractError } from '../../services/api';
+import { interviewsApi, uploadApi, brandingApi, extractError } from '../../services/api';
 import { useInterviewStore } from '../../store/interviewStore';
 import { useProctoring } from '../../hooks/useProctoring';
 import { Button, Spinner } from '../../components/ui';
+import type { PublicBranding } from '../../types';
 import clsx from 'clsx';
 
 // ─── Pending response fallback ─────────────────────────────────────────────────
@@ -96,6 +97,7 @@ export default function InterviewRoom() {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [error, setError] = useState('');
   const [sttAvailable, setSttAvailable] = useState(true);
+  const [branding, setBranding] = useState<PublicBranding | null>(null);
 
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const audioChunks = useRef<Blob[]>([]);
@@ -136,6 +138,14 @@ export default function InterviewRoom() {
       });
     }
   }, []);
+
+  // Company branding for the header — works whether the session came from the
+  // store already (navigated from WaitingRoom) or was just fetched above.
+  useEffect(() => {
+    if (session?.organizationId) {
+      brandingApi.getPublic(session.organizationId).then(setBranding).catch(() => {});
+    }
+  }, [session?.organizationId]);
 
   // Best-effort sync of any answers that were saved locally after a previous
   // submitResponse timeout (e.g. a Render cold start, or the tab being reloaded
@@ -443,6 +453,18 @@ export default function InterviewRoom() {
       <div className="flex-1 flex flex-col lg:flex-row pt-1">
         {/* Left: Camera + Progress */}
         <div className="lg:w-72 bg-surface-800 p-4 flex flex-col gap-4">
+          {/* Company branding */}
+          {(branding?.companyName || session.opening.organization) && (
+            <div className="flex items-center gap-2">
+              {branding?.logoUrl && (
+                <img src={branding.logoUrl} alt="" className="h-5 w-5 object-contain rounded flex-shrink-0" />
+              )}
+              <span className="text-xs text-surface-300 truncate">
+                Interviewing for {session.opening.title} at {branding?.companyName ?? session.opening.organization}
+              </span>
+            </div>
+          )}
+
           {/* Video preview */}
           <div className="rounded-xl overflow-hidden bg-black aspect-video lg:aspect-auto lg:h-44">
             {stream ? (

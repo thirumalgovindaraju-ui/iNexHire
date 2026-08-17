@@ -1,7 +1,8 @@
 // src/routes/upload.routes.ts
 import { Router } from 'express';
 import multer from 'multer';
-import { uploadAudio } from '../services/storage.service';
+import { uploadAudio, uploadImage } from '../services/storage.service';
+import { authenticate } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 
 const router = Router();
@@ -12,6 +13,19 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 }, // 50MB max
   fileFilter: (_req, file, cb) => {
     const allowed = ['audio/webm', 'audio/mp4', 'audio/ogg', 'audio/wav', 'video/webm'];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new AppError(400, `File type ${file.mimetype} not allowed`) as any);
+    }
+  },
+});
+
+const imageUpload = multer({
+  storage,
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB max — matches the WhiteLabel.tsx upload UI copy
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['image/png', 'image/svg+xml', 'image/jpeg', 'image/webp'];
     if (allowed.includes(file.mimetype)) {
       cb(null, true);
     } else {
@@ -32,6 +46,19 @@ router.post('/audio', upload.single('audio'), async (req, res, next) => {
     const filename = `interviews/${interviewId}/${questionId}.${ext}`;
 
     const url = await uploadAudio(req.file.buffer, filename, req.file.mimetype);
+
+    res.json({ success: true, url });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/upload/logo — recruiter-facing (authenticated), used by WhiteLabel.tsx
+router.post('/logo', authenticate, imageUpload.single('logo'), async (req, res, next) => {
+  try {
+    if (!req.file) throw new AppError(400, 'No file uploaded');
+
+    const url = await uploadImage(req.file.buffer, req.file.mimetype);
 
     res.json({ success: true, url });
   } catch (err) {

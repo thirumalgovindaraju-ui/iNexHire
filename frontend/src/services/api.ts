@@ -245,6 +245,12 @@ export const interviewsApi = {
     return res.data;
   },
 
+  // Candidate-facing (no auth) — status-agnostic, works even after completion
+  orgByToken: async (token: string): Promise<string> => {
+    const res = await apiClient.get(`/interviews/org-by-token/${token}`);
+    return res.data.organizationId;
+  },
+
   // Candidate-facing (no auth)
   startSession: async (token: string) => {
     const res = await apiClient.get(`/interviews/start/${token}`);
@@ -347,6 +353,35 @@ export const codingApi = {
   list: async (interviewId: string) => {
     const res = await apiClient.get(`/coding/${interviewId}`);
     return res.data.assessments;
+  },
+};
+
+// ─── White-label Branding ───────────────────────────────────────────────────────
+
+export const brandingApi = {
+  get: async () => {
+    const res = await apiClient.get('/branding');
+    return res.data.branding;
+  },
+  save: async (data: {
+    companyName?: string; domain?: string; logoUrl?: string;
+    primaryColor?: string; accentColor?: string; fontFamily?: string; welcomeMsg?: string;
+  }) => {
+    const res = await apiClient.put('/branding', data);
+    return res.data.branding;
+  },
+  uploadLogo: async (file: File): Promise<string> => {
+    const form = new FormData();
+    form.append('logo', file);
+    const res = await apiClient.post('/upload/logo', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return res.data.url;
+  },
+  // Candidate-facing (no auth)
+  getPublic: async (organizationId: string) => {
+    const res = await apiClient.get(`/branding/public/${organizationId}`);
+    return res.data.branding;
   },
 };
 

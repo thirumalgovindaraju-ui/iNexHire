@@ -98,6 +98,7 @@ router.get('/start/:token', async (req, res, next) => {
     res.json({
       success: true,
       interviewId: interview.id,
+      organizationId: interview.candidate.opening.organizationId,
       candidate: interview.candidate,
       opening: {
         title: interview.candidate.opening.title,
@@ -195,6 +196,23 @@ router.post('/:id/complete', async (req, res, next) => {
     await enqueueEvaluation(interview.id);
 
     res.json({ success: true, message: 'Interview submitted. Report will be ready shortly.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/interviews/org-by-token/:token — lightweight, status-agnostic lookup
+// (unlike /start/:token, this works even after the interview is COMPLETED/EVALUATED).
+// Used by candidate-facing pages like InterviewComplete to fetch which org's
+// branding to display, without re-triggering the full start-session flow.
+router.get('/org-by-token/:token', async (req, res, next) => {
+  try {
+    const interview = await prisma.interview.findUnique({
+      where: { inviteToken: req.params.token },
+      select: { candidate: { select: { opening: { select: { organizationId: true } } } } },
+    });
+    if (!interview) throw new AppError(404, 'Interview not found');
+    res.json({ success: true, organizationId: interview.candidate.opening.organizationId });
   } catch (err) {
     next(err);
   }

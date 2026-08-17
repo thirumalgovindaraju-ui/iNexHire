@@ -27,3 +27,12 @@ export async function getSignedUrl(_key: string): Promise<string> {
   // TODO: Generate pre-signed URL for playback
   return '';
 }
+
+// Branding logos need to actually render in the UI immediately (live preview,
+// candidate pages), unlike the audio stub above which nothing currently plays
+// back — so this always embeds the image as a data URI rather than returning a
+// placeholder/stub URL that would 404. Swap to a real S3 upload (returning a
+// public URL) once AWS is configured and this app has real object storage.
+export async function uploadImage(buffer: Buffer, mimeType: string): Promise<string> {
+  return `data:${mimeType};base64,${buffer.toString('base64')}`;
+}
