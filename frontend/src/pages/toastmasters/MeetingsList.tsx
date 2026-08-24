@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { CalendarDays, FileBarChart, MapPin, Mic2, Plus, Play, Quote, Users } from 'lucide-react';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../../components/ui';
 import { TM_GOLD, TM_NAVY, TM_STATUS_STYLE } from '../../components/toastmasters/theme';
-import { meetingsApi, membersApi } from '../../services/toastmasters';
+import { meetingsApi, membersApi, withColdStartRetry } from '../../services/toastmasters';
 import type { TmMeeting } from '../../services/toastmasters';
 
 export default function MeetingsList() {
@@ -12,17 +12,30 @@ export default function MeetingsList() {
   const [meetings, setMeetings] = useState<TmMeeting[]>([]);
   const [memberCount, setMemberCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [warmingUp, setWarmingUp] = useState(false);
 
   useEffect(() => {
-    Promise.all([meetingsApi.list(), membersApi.list()])
+    // This fetch also doubles as the "wake up Render" ping — the Toastmasters
+    // API is on a free-tier instance that spins down when idle, so the first
+    // hit of the day can take 20-30s. If it's not back fast, say so.
+    const warmupTimer = setTimeout(() => setWarmingUp(true), 2500);
+    withColdStartRetry(() => Promise.all([meetingsApi.list(), membersApi.list()]))
       .then(([m, members]) => { setMeetings(m); setMemberCount(members.length); })
-      .finally(() => setLoading(false));
+      .finally(() => { clearTimeout(warmupTimer); setWarmingUp(false); setLoading(false); });
+    return () => clearTimeout(warmupTimer);
   }, []);
 
   const thisYear = meetings.filter((m) => new Date(m.date).getFullYear() === new Date().getFullYear()).length;
 
   if (loading) {
-    return <div className="flex justify-center py-20"><Spinner size={28} /></div>;
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-20">
+        <Spinner size={28} />
+        {warmingUp && (
+          <p className="text-sm text-surface-400">Connecting... server may be waking up from idle (up to 30s)</p>
+        )}
+      </div>
+    );
   }
 
   return (

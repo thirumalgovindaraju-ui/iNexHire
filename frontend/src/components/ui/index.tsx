@@ -317,23 +317,33 @@ export function PageHeader({ title, description, action }: {
 
 // ─── Toast (simple) ───────────────────────────────────────────────────────────
 
-export function useToast() {
-  const [toasts, setToasts] = useState<{ id: string; message: string; type: 'success' | 'error' }[]>([]);
+interface ToastAction { label: string; onClick: () => void }
 
-  const show = (message: string, type: 'success' | 'error' = 'success') => {
+export function useToast() {
+  const [toasts, setToasts] = useState<{ id: string; message: string; type: 'success' | 'error'; action?: ToastAction }[]>([]);
+
+  const show = (message: string, type: 'success' | 'error' = 'success', action?: ToastAction) => {
     const id = Math.random().toString(36).slice(2);
-    setToasts((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3500);
+    setToasts((prev) => [...prev, { id, message, type, action }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), action ? 8000 : 3500);
   };
 
   const ToastContainer = () => (
     <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
       {toasts.map((t) => (
         <div key={t.id} className={clsx(
-          'px-4 py-3 rounded-lg shadow-lg text-sm font-medium text-white min-w-48',
+          'px-4 py-3 rounded-lg shadow-lg text-sm font-medium text-white min-w-48 flex items-center gap-3',
           t.type === 'success' ? 'bg-green-600' : 'bg-red-600'
         )}>
-          {t.message}
+          <span className="flex-1">{t.message}</span>
+          {t.action && (
+            <button
+              onClick={t.action.onClick}
+              className="flex-shrink-0 text-xs font-semibold uppercase tracking-wide bg-white/20 hover:bg-white/30 rounded px-2 py-1"
+            >
+              {t.action.label}
+            </button>
+          )}
         </div>
       ))}
     </div>

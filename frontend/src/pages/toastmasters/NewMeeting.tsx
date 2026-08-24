@@ -5,7 +5,7 @@ import { GripVertical, Plus, Trash2 } from 'lucide-react';
 import { Button, Card, Input, PageHeader, useToast } from '../../components/ui';
 import { addMinutes } from '../../components/toastmasters/theme';
 import { extractError } from '../../services/api';
-import { agendaApi, meetingsApi } from '../../services/toastmasters';
+import { agendaApi, isColdStartTimeout, meetingsApi, withColdStartRetry } from '../../services/toastmasters';
 
 const DEFAULT_AGENDA = [
   { activityName: "SAA's Opening", durationMins: 2 },
@@ -68,12 +68,15 @@ export default function NewMeeting() {
     if (!title || !date) { show('Title and date are required', 'error'); return; }
     setSaving(true);
     try {
-      const meeting = await meetingsApi.create({
-        title, date, theme: theme || undefined,
-        meetingNumber: meetingNumber ? Number(meetingNumber) : undefined,
-        wordOfDay: wordOfDay || undefined, wordMeaning: wordMeaning || undefined, wordType: wordType || undefined,
-        startTime: startTime || undefined, endTime: withTimes[withTimes.length - 1]?.end, venue: venue || undefined,
-      });
+      const meeting = await withColdStartRetry(
+        () => meetingsApi.create({
+          title, date, theme: theme || undefined,
+          meetingNumber: meetingNumber ? Number(meetingNumber) : undefined,
+          wordOfDay: wordOfDay || undefined, wordMeaning: wordMeaning || undefined, wordType: wordType || undefined,
+          startTime: startTime || undefined, endTime: withTimes[withTimes.length - 1]?.end, venue: venue || undefined,
+        }),
+        () => show('Server is waking up, retrying...', 'error')
+      );
       await agendaApi.replaceAll(meeting.id, withTimes.map((row, i) => ({
         sequence: i, activityName: row.activityName, durationMins: row.durationMins,
         plannedStart: row.start, plannedEnd: row.end,
@@ -81,7 +84,11 @@ export default function NewMeeting() {
       show('Meeting created!');
       navigate(`/toastmasters/${meeting.id}`);
     } catch (err) {
-      show(extractError(err), 'error');
+      if (isColdStartTimeout(err)) {
+        show('Server is starting up (free tier). Please click Create again.', 'error', { label: 'Retry', onClick: handleCreate });
+      } else {
+        show(extractError(err), 'error');
+      }
     } finally {
       setSaving(false);
     }
@@ -145,7 +152,7 @@ export default function NewMeeting() {
       </Card>
 
       <div className="flex justify-end mt-5">
-        <Button loading={saving} onClick={handleCreate}>Create Meeting</Button>
+        <Button loading={saving} onClick={handleCreate}>{saving ? 'Creating meeting...' : 'Create Meeting'}</Button>
       </div>
     </div>
   );

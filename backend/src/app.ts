@@ -73,9 +73,14 @@ export function createApp() {
   }
 
   // ─── Health Check ──────────────────────────────────────────────────────────
-  app.get('/health', (_req, res) => {
+  // Exposed at both paths: '/health' for infra/uptime checks, '/api/health' so it
+  // can be pinged with the same base path the frontend's apiClient already uses
+  // (handy for manually waking a sleeping Render free-tier instance).
+  const healthCheck = (_req: express.Request, res: express.Response) => {
     res.json({ status: 'ok', env: env.nodeEnv, timestamp: new Date().toISOString() });
-  });
+  };
+  app.get('/health', healthCheck);
+  app.get('/api/health', healthCheck);
 
   // ─── Routes ────────────────────────────────────────────────────────────────
   app.use('/api/auth', authRoutes);
