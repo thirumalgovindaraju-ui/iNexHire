@@ -27,8 +27,11 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/prisma ./prisma
 
+COPY entrypoint.sh ./entrypoint.sh
+RUN chmod +x ./entrypoint.sh
+
 RUN addgroup -S nexhire && adduser -S nexhire -G nexhire
 USER nexhire
 
 EXPOSE 4000
-CMD ["node", "dist/server.js"]
+CMD ["sh", "./entrypoint.sh"]
