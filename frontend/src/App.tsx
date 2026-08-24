@@ -45,6 +45,15 @@ import WhatsAppCenter from './pages/recruiter/WhatsAppCenter';
 import GroupDiscussion from './pages/recruiter/GroupDiscussion';
 import CompensationBenchmark from './pages/recruiter/CompensationBenchmark';
 import GDRoom from './pages/interview/GDRoom';
+// Toastmasters Meeting Manager
+import ToastmastersMeetingsList from './pages/toastmasters/MeetingsList';
+import ToastmastersNewMeeting from './pages/toastmasters/NewMeeting';
+import ToastmastersMeetingDetail from './pages/toastmasters/MeetingDetail';
+import ToastmastersRunMeeting from './pages/toastmasters/RunMeeting';
+import ToastmastersRoleAssignment from './pages/toastmasters/RoleAssignment';
+import ToastmastersAhCounterLive from './pages/toastmasters/AhCounterLive';
+import ToastmastersEvaluate from './pages/toastmasters/Evaluate';
+import ToastmastersReport from './pages/toastmasters/Report';
 // Settings
 import TeamRoles from './pages/settings/TeamRoles';
 import SSOSettings from './pages/settings/SSOSettings';
@@ -112,6 +121,15 @@ export default function App() {
           <Route path="/whatsapp" element={<WhatsAppCenter />} />
           <Route path="/group-discussion" element={<GroupDiscussion />} />
           <Route path="/compensation" element={<CompensationBenchmark />} />
+          {/* Toastmasters Meeting Manager */}
+          <Route path="/toastmasters" element={<ToastmastersMeetingsList />} />
+          <Route path="/toastmasters/new" element={<ToastmastersNewMeeting />} />
+          <Route path="/toastmasters/:id" element={<ToastmastersMeetingDetail />} />
+          <Route path="/toastmasters/:id/run" element={<ToastmastersRunMeeting />} />
+          <Route path="/toastmasters/:id/roles" element={<ToastmastersRoleAssignment />} />
+          <Route path="/toastmasters/:id/ahcounter" element={<ToastmastersAhCounterLive />} />
+          <Route path="/toastmasters/:id/evaluate" element={<ToastmastersEvaluate />} />
+          <Route path="/toastmasters/:id/report" element={<ToastmastersReport />} />
           {/* Settings */}
           <Route path="/settings/team" element={<TeamRoles />} />
           <Route path="/settings/sso" element={<SSOSettings />} />

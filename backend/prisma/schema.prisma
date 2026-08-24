@@ -66,6 +66,9 @@ model Organization {
   naukriCandidates  NaukriCandidate[]
   compensationBenchmarks CompensationBenchmark[]
   brandingConfig    BrandingConfig?
+  tmClub            TmClub?
+  tmMembers         TmMember[]
+  tmMeetings        TmMeeting[]
 
   @@map("organizations")
 }
@@ -86,6 +89,8 @@ model User {
   refreshTokens RefreshToken[]
   auditLogs     AuditLog[]
   notifications Notification[]
+  tmMeetingsCreated TmMeeting[]
+  tmMemberProfiles  TmMember[]
 
   @@map("users")
 }
@@ -651,4 +656,281 @@ model BrandingConfig {
   organization Organization @relation(fields: [organizationId], references: [id])
 
   @@map("branding_configs")
+}
+
+// ─── Toastmasters Meeting Manager (iOpex Toastmasters Club) ────────────────────
+// Role names used across TmRoleAssignment.roleName, seeded on every new meeting:
+// MENTOR | SAA | PO | GENERAL_EVALUATOR | TABLE_TOPICS_MASTER | TIMER | TMOD |
+// SPEAKER_1 | EVALUATOR_1 | SPEAKER_2 | EVALUATOR_2 | SPEAKER_3 | EVALUATOR_3 |
+// AH_COUNTER | GRAMMARIAN
+
+model TmClub {
+  id             String   @id @default(cuid())
+  organizationId String   @unique
+  name           String   @default("iOpex Toastmasters Club")
+  charterNumber  String?
+  area           String?
+  division       String?
+  district       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  meetings     TmMeeting[]
+
+  @@map("tm_clubs")
+}
+
+model TmMember {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  email          String?
+  memberNumber   String?
+  pathwaysPath   String?  // e.g. "Presentation Mastery"
+  level          String?  // e.g. "Level 3"
+  baseUserId     String?  // optional link to an existing NexHire User account
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  organization      Organization           @relation(fields: [organizationId], references: [id])
+  baseUser          User?                  @relation(fields: [baseUserId], references: [id])
+  roleAssignments   TmRoleAssignment[]
+  ahCounters        TmAhCounter[]
+  educationSessions TmEducationSession[]
+  tableTopicResponses TmTableTopicResponse[]
+
+  @@map("tm_members")
+}
+
+model TmMeeting {
+  id             String   @id @default(cuid())
+  organizationId String
+  createdById    String
+  clubId         String?
+  meetingNumber  Int?
+  title          String
+  theme          String?
+  wordOfDay      String?
+  wordMeaning    String?
+  wordType       String?  // noun | verb | adjective | adverb | phrase
+  date           DateTime
+  startTime      String?  // "08:00"
+  endTime        String?  // "09:20"
+  venue          String?
+  status         String   @default("PLANNED") // PLANNED | IN_PROGRESS | COMPLETED | CANCELLED
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization        Organization           @relation(fields: [organizationId], references: [id])
+  createdBy            User                   @relation(fields: [createdById], references: [id])
+  club                 TmClub?                @relation(fields: [clubId], references: [id])
+  agendaItems          TmAgendaItem[]
+  roleAssignments      TmRoleAssignment[]
+  educationSessions    TmEducationSession[]
+  timerLogs            TmTimerLog[]
+  ahCounters           TmAhCounter[]
+  grammarianLog        TmGrammarianLog?
+  evaluations          TmEvaluation[]
+  tableTopicResponses  TmTableTopicResponse[]
+  report               TmMeetingReport?
+  generalEvaluation    TmGeneralEvaluation?
+
+  @@map("tm_meetings")
+}
+
+model TmAgendaItem {
+  id               String    @id @default(cuid())
+  meetingId        String
+  sequence         Int
+  activityName     String
+  durationMins     Int?
+  plannedStart     String?   // "08:00"
+  plannedEnd       String?   // "08:02"
+  actualStart      DateTime?
+  actualEnd        DateTime?
+  notes            String?   @db.Text
+  roleAssignmentId String?
+
+  meeting        TmMeeting         @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  roleAssignment TmRoleAssignment? @relation(fields: [roleAssignmentId], references: [id])
+
+  @@map("tm_agenda_items")
+}
+
+model TmRoleAssignment {
+  id              String  @id @default(cuid())
+  meetingId       String
+  roleName        String
+  memberId        String?
+  speechTitle     String?
+  speechProject   String?
+  manualNumber    String? // e.g. CC manual project number
+  pathwaysProject String?
+  greenMins       Int?
+  yellowMins      Int?
+  redMins         Int?
+
+  createdAt DateTime @default(now())
+
+  meeting                TmMeeting      @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  member                 TmMember?      @relation(fields: [memberId], references: [id])
+  agendaItems            TmAgendaItem[]
+  timerLogs              TmTimerLog[]
+  evaluationsAsSpeaker   TmEvaluation[] @relation("SpeakerRole")
+  evaluationsAsEvaluator TmEvaluation[] @relation("EvaluatorRole")
+
+  @@unique([meetingId, roleName])
+  @@map("tm_role_assignments")
+}
+
+model TmEducationSession {
+  id           String @id @default(cuid())
+  meetingId    String
+  topic        String
+  presenterId  String?
+  durationMins Int?
+
+  createdAt DateTime @default(now())
+
+  meeting   TmMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  presenter TmMember? @relation(fields: [presenterId], references: [id])
+
+  @@map("tm_education_sessions")
+}
+
+model TmTimerLog {
+  id                 String  @id @default(cuid())
+  meetingId          String
+  roleAssignmentId   String
+  actualDurationSecs Int
+  result             String  // UNDER | WITHIN | OVER
+  notes              String?
+
+  createdAt DateTime @default(now())
+
+  meeting        TmMeeting        @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  roleAssignment TmRoleAssignment @relation(fields: [roleAssignmentId], references: [id])
+
+  @@unique([meetingId, roleAssignmentId])
+  @@map("tm_timer_logs")
+}
+
+model TmAhCounter {
+  id           String @id @default(cuid())
+  meetingId    String
+  memberId     String
+  umCount      Int    @default(0)
+  uhCount      Int    @default(0)
+  soCount      Int    @default(0)
+  likeCount    Int    @default(0)
+  erCount      Int    @default(0)
+  youKnowCount Int    @default(0)
+  otherCount   Int    @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  meeting TmMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  member  TmMember  @relation(fields: [memberId], references: [id])
+
+  @@unique([meetingId, memberId])
+  @@map("tm_ah_counters")
+}
+
+model TmGrammarianLog {
+  id                  String  @id @default(cuid())
+  meetingId           String  @unique
+  wordOfDay           String?
+  correctUses         Int     @default(0)
+  incorrectUses       Int     @default(0)
+  goodGrammarExamples String? @db.Text
+  errorsNoted         String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  meeting TmMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@map("tm_grammarian_logs")
+}
+
+model TmEvaluation {
+  id                 String  @id @default(cuid())
+  meetingId          String
+  speakerRoleId      String
+  evaluatorRoleId    String
+  commendations      String? @db.Text
+  recommendations    String? @db.Text
+  ratingContent      Int?    // 1-5
+  ratingDelivery     Int?    // 1-5
+  ratingLanguage     Int?    // 1-5
+  overallRating      Int?    // 1-5
+  openingFeedback    String? @db.Text // was the opening attention-grabbing?
+  bodyFeedback       String? @db.Text // was the body clearly structured?
+  conclusionFeedback String? @db.Text // was the conclusion memorable?
+  status             String  @default("DRAFT") // DRAFT | SUBMITTED
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  meeting   TmMeeting        @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  speaker   TmRoleAssignment @relation("SpeakerRole", fields: [speakerRoleId], references: [id])
+  evaluator TmRoleAssignment @relation("EvaluatorRole", fields: [evaluatorRoleId], references: [id])
+
+  @@unique([meetingId, speakerRoleId])
+  @@map("tm_evaluations")
+}
+
+// General Evaluator's own write-up: overall meeting critique, feedback on each
+// of the individual Evaluators, and their Best Speaker recommendation. Distinct
+// from TmMeetingReport, which is an auto-generated printable snapshot.
+model TmGeneralEvaluation {
+  id                String   @id @default(cuid())
+  meetingId         String   @unique
+  overallFeedback   String?  @db.Text
+  evaluatorFeedback Json?    // [{ evaluatorRoleId, feedback }]
+  bestSpeakerRoleId String?
+  status            String   @default("DRAFT") // DRAFT | SUBMITTED
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  meeting TmMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@map("tm_general_evaluations")
+}
+
+model TmTableTopicResponse {
+  id           String  @id @default(cuid())
+  meetingId    String
+  speakerName  String
+  isMember     Boolean @default(true)
+  memberId     String?
+  topicGiven   String?
+  durationSecs Int?
+  timerResult  String? // UNDER | WITHIN | OVER
+
+  createdAt DateTime @default(now())
+
+  meeting TmMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  member  TmMember? @relation(fields: [memberId], references: [id])
+
+  @@map("tm_table_topic_responses")
+}
+
+model TmMeetingReport {
+  id                  String   @id @default(cuid())
+  meetingId           String   @unique
+  generatedAt         DateTime @default(now())
+  reportJson          Json
+  bestSpeakerRoleId   String?
+  bestTableTopicId    String?
+  bestEvaluatorRoleId String?
+
+  meeting TmMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@map("tm_meeting_reports")
 }
