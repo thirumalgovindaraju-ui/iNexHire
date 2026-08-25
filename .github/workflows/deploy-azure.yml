@@ -1,9 +1,7 @@
 name: Deploy Backend to Azure
 
 on:
-  push:
-    branches: [main]
-  workflow_dispatch:
+  workflow_dispatch: # manual only, never auto — backend actually runs on Render, not Azure
 
 permissions:
   contents: read
