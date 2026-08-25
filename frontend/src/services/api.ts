@@ -52,6 +52,17 @@ export function ensureAccessToken(): Promise<string | null> {
   return refreshAccessToken().catch(() => null);
 }
 
+// Unconditional refresh — used by the periodic keep-alive interval below, unlike
+// ensureAccessToken which only refreshes when accessToken is missing. Access
+// tokens are short-lived (15 min); this pushes the expiry forward proactively
+// on any authenticated session so long-lived pages (a role assignment session,
+// a live meeting run) never even hit the reactive 401-retry path in practice.
+export function refreshAccessTokenIfAuthenticated(): Promise<string | null> {
+  const { isAuthenticated, refreshToken } = useAuthStore.getState();
+  if (!isAuthenticated || !refreshToken) return Promise.resolve(null);
+  return refreshAccessToken().catch(() => null);
+}
+
 // Auto-refresh on 401 — the fallback for any request that races ahead of
 // ensureAccessToken, or whose access token expired mid-session.
 apiClient.interceptors.response.use(

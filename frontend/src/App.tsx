@@ -2,7 +2,7 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
-import { ensureAccessToken } from './services/api';
+import { ensureAccessToken, refreshAccessTokenIfAuthenticated } from './services/api';
 import DashboardLayout from './layouts/DashboardLayout';
 import AuthLayout from './layouts/AuthLayout';
 import CandidateLayout from './layouts/CandidateLayout';
@@ -81,6 +81,10 @@ function GuestRoute({ children }: { children: React.ReactNode }) {
 export default function App() {
   useEffect(() => {
     ensureAccessToken();
+    // Proactive keep-alive: access tokens last 15 min, so refresh every 10 —
+    // covers every page for the app's whole lifetime, not just specific ones.
+    const interval = setInterval(refreshAccessTokenIfAuthenticated, 10 * 60 * 1000);
+    return () => clearInterval(interval);
   }, []);
 
   return (
