@@ -1,7 +1,7 @@
 // src/pages/toastmasters/MeetingsList.tsx — meeting list dashboard
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarDays, FileBarChart, MapPin, Mic2, Plus, Play, Quote, Users } from 'lucide-react';
+import { CalendarDays, FileBarChart, MapPin, Mic2, Plus, Play, Quote, Users, UserCog } from 'lucide-react';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../../components/ui';
 import { TM_GOLD, TM_NAVY, TM_STATUS_STYLE } from '../../components/toastmasters/theme';
 import { meetingsApi, membersApi, withColdStartRetry } from '../../services/toastmasters';
@@ -114,6 +114,7 @@ export default function MeetingsList() {
 
                 <div className="flex gap-2 mt-auto pt-3">
                   <Button size="sm" variant="secondary" className="flex-1" onClick={() => navigate(`/toastmasters/${m.id}`)}>View</Button>
+                  <Button size="sm" variant="secondary" className="flex-1" onClick={() => navigate(`/toastmasters/${m.id}/roles`)}><UserCog size={12} /> Roles</Button>
                   <Button size="sm" variant="secondary" className="flex-1" onClick={() => navigate(`/toastmasters/${m.id}/run`)}><Play size={12} /> Run</Button>
                   <Button size="sm" variant="secondary" className="flex-1" onClick={() => navigate(`/toastmasters/${m.id}/report`)}><FileBarChart size={12} /> Report</Button>
                 </div>
