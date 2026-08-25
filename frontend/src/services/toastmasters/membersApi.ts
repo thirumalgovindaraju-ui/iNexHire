@@ -7,13 +7,16 @@ export const membersApi = {
     const res = await tm.get('/toastmasters/members');
     return res.data.members;
   },
-  create: async (data: { name: string; email?: string; memberNumber?: string; pathwaysPath?: string; level?: string }): Promise<TmMember> => {
+  create: async (data: { name: string; email?: string; memberNumber?: string; pathwaysPath?: string; level?: string; active?: boolean }): Promise<TmMember> => {
     const res = await tm.post('/toastmasters/members', data);
     return res.data.member;
   },
   update: async (memberId: string, data: Partial<{ name: string; email: string; memberNumber: string; pathwaysPath: string; level: string; active: boolean }>): Promise<TmMember> => {
     const res = await tm.patch(`/toastmasters/members/${memberId}`, data);
     return res.data.member;
+  },
+  remove: async (memberId: string): Promise<void> => {
+    await tm.delete(`/toastmasters/members/${memberId}`);
   },
   lastEvaluator: async (memberId: string): Promise<TmMember | null> => {
     const res = await tm.get(`/toastmasters/members/${memberId}/last-evaluator`);

@@ -47,6 +47,7 @@ import CompensationBenchmark from './pages/recruiter/CompensationBenchmark';
 import GDRoom from './pages/interview/GDRoom';
 // Toastmasters Meeting Manager
 import ToastmastersMeetingsList from './pages/toastmasters/MeetingsList';
+import ToastmastersMembers from './pages/toastmasters/Members';
 import ToastmastersNewMeeting from './pages/toastmasters/NewMeeting';
 import ToastmastersMeetingDetail from './pages/toastmasters/MeetingDetail';
 import ToastmastersRunMeeting from './pages/toastmasters/RunMeeting';
@@ -123,6 +124,7 @@ export default function App() {
           <Route path="/compensation" element={<CompensationBenchmark />} />
           {/* Toastmasters Meeting Manager */}
           <Route path="/toastmasters" element={<ToastmastersMeetingsList />} />
+          <Route path="/toastmasters/members" element={<ToastmastersMembers />} />
           <Route path="/toastmasters/new" element={<ToastmastersNewMeeting />} />
           <Route path="/toastmasters/:id" element={<ToastmastersMeetingDetail />} />
           <Route path="/toastmasters/:id/run" element={<ToastmastersRunMeeting />} />

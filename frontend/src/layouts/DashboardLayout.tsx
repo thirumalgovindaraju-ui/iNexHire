@@ -1,6 +1,6 @@
 // src/layouts/DashboardLayout.tsx — NexHire v3 Final
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Briefcase, Users, BarChart2, LogOut, Bell, Search, Shield, FileText, Zap, Clock, Settings, Database, GitBranch, Brain, Heart, Trophy, ClipboardList, Palette, MessageSquare, Play, Globe, AlertTriangle, UserCog, MessageCircle, TrendingUp, Key, LayoutTemplate, ShieldCheck, Video, Smartphone, IndianRupee, Mic2 } from 'lucide-react';
+import { LayoutDashboard, Briefcase, Users, BarChart2, LogOut, Bell, Search, Shield, FileText, Zap, Clock, Settings, Database, GitBranch, Brain, Heart, Trophy, ClipboardList, Palette, MessageSquare, Play, Globe, AlertTriangle, UserCog, MessageCircle, TrendingUp, Key, LayoutTemplate, ShieldCheck, Video, Smartphone, IndianRupee, Mic2, UserCircle2 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { authApi } from '../services/api';
 import { useState } from 'react';
@@ -40,6 +40,7 @@ const NAV = [
   ]},
   { section: 'Clubs', items: [
     { to: '/toastmasters', icon: Mic2, label: 'Toastmasters', badge: 'NEW' },
+    { to: '/toastmasters/members', icon: UserCircle2, label: 'Members' },
   ]},
   { section: 'Settings', items: [
     { to: '/settings/team', icon: UserCog, label: 'Team & Roles', adminOnly: true },

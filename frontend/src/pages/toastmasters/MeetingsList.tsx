@@ -43,7 +43,12 @@ export default function MeetingsList() {
       <PageHeader
         title="Toastmasters Meeting Manager"
         description="iOpex Toastmasters Club — plan, run and report on club meetings"
-        action={<Button onClick={() => navigate('/toastmasters/new')}><Plus size={14} /> New Meeting</Button>}
+        action={
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={() => navigate('/toastmasters/members')}><Users size={14} /> Members</Button>
+            <Button onClick={() => navigate('/toastmasters/new')}><Plus size={14} /> New Meeting</Button>
+          </div>
+        }
       />
 
       <div className="grid grid-cols-3 gap-3 mb-6">

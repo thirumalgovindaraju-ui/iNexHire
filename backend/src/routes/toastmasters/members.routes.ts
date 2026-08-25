@@ -29,6 +29,7 @@ const createMemberSchema = z.object({
   pathwaysPath: z.string().optional(),
   level: z.string().optional(),
   baseUserId: z.string().optional(),
+  active: z.boolean().optional(),
 });
 
 // POST /api/toastmasters/members
@@ -91,6 +92,24 @@ router.get('/members/:memberId/last-evaluator', async (req, res, next) => {
     });
 
     res.json({ success: true, evaluatorMember: evaluation?.evaluator.member ?? null });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/toastmasters/members/:memberId — role assignments referencing this
+// member are set to unassigned automatically (optional FK, ON DELETE SET NULL);
+// required-FK references (e.g. TmAhCounter) instead hit P2003, which errorHandler
+// turns into a clean 409 rather than a 500.
+router.delete('/members/:memberId', async (req, res, next) => {
+  try {
+    const existing = await prisma.tmMember.findFirst({
+      where: { id: req.params.memberId, organizationId: req.user!.organizationId },
+    });
+    if (!existing) throw new AppError(404, 'Member not found');
+
+    await prisma.tmMember.delete({ where: { id: req.params.memberId } });
+    res.json({ success: true });
   } catch (err) {
     next(err);
   }
