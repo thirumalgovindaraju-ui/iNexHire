@@ -7,3 +7,4 @@ export * from './agendaApi';
 export * from './evaluationsApi';
 export * from './timerAhCounterApi';
 export * from './httpClient';
+export * from './speechAnalysisApi';

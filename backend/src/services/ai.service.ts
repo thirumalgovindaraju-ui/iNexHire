@@ -1548,3 +1548,123 @@ Return ONLY valid JSON, no other text:
     };
   }
 }
+
+// ─── Toastmasters: Speech Analysis (grammar, filler words, AI evaluation) ──────
+// Note: highlighted-transcript HTML is deliberately NOT requested from the model —
+// the frontend does its own safe, deterministic filler-word highlighting from the
+// plain transcript instead of trusting model-generated markup.
+
+export interface SpeechGrammarError { text: string; correction: string; rule: string }
+
+export interface SpeechFillerWordCounts {
+  um: number; uh: number; so: number; like: number; er: number; you_know: number;
+  total: number; ratePerMinute: number; worstOffender: string;
+}
+
+export interface SpeechAnalysisResult {
+  grammar: { score: number; errors: SpeechGrammarError[]; suggestions: string[] };
+  fillerWords: SpeechFillerWordCounts;
+  evaluation: {
+    contentScore: number; deliveryScore: number; languageScore: number; overallScore: number;
+    commendations: string[]; recommendations: string[];
+    openingFeedback: string; bodyFeedback: string; conclusionFeedback: string;
+  };
+  wordOfDayUsed: boolean;
+  summary: string;
+}
+
+const EMPTY_FILLER_WORD_COUNTS: SpeechFillerWordCounts = {
+  um: 0, uh: 0, so: 0, like: 0, er: 0, you_know: 0, total: 0, ratePerMinute: 0, worstOffender: 'none',
+};
+
+export async function analyzeSpeech(params: {
+  transcript: string;
+  durationSeconds?: number;
+  wordOfDay?: string;
+}): Promise<SpeechAnalysisResult> {
+  const minutes = params.durationSeconds ? params.durationSeconds / 60 : undefined;
+
+  const prompt = `You are an expert Toastmasters evaluator and English-language coach analysing a club speech transcript.
+
+${params.wordOfDay ? `Word of the Day for this meeting: "${params.wordOfDay}" — check whether the speaker used it.` : 'No word of the day was set for this meeting.'}
+Speech duration: ${minutes ? `${minutes.toFixed(1)} minutes` : 'unknown'}.
+
+TRANSCRIPT:
+"""
+${params.transcript.slice(0, 6000)}
+"""
+
+Analyse this speech and return ONLY valid JSON in this exact shape, no other text:
+{
+  "grammar": {
+    "score": <0-10 float>,
+    "errors": [{"text": "<exact phrase from the transcript>", "correction": "<corrected phrase>", "rule": "<short grammar rule name>"}],
+    "suggestions": ["<general writing/speaking improvement tip>"]
+  },
+  "fillerWords": {
+    "um": <count>, "uh": <count>, "so": <count>, "like": <count>, "er": <count>, "you_know": <count>,
+    "total": <sum of the above>, "ratePerMinute": <total divided by duration in minutes, 1 decimal>, "worstOffender": "<the most-used filler word>"
+  },
+  "evaluation": {
+    "contentScore": <1-5 int>, "deliveryScore": <1-5 int>, "languageScore": <1-5 int>, "overallScore": <1-5 int>,
+    "commendations": ["<specific thing that went well, referencing actual phrases from the transcript>"],
+    "recommendations": ["<specific thing to improve, referencing actual phrases from the transcript>"],
+    "openingFeedback": "<was the opening attention-grabbing?>",
+    "bodyFeedback": "<was the body clearly structured?>",
+    "conclusionFeedback": "<was the conclusion memorable?>"
+  },
+  "wordOfDayUsed": <true|false>,
+  "summary": "<2-3 sentence overall summary of the speech>"
+}
+
+Count filler words by scanning the transcript literally: "um", "uh", "er" always count; "so" and "like" only
+count when used as a verbal filler/tic, not as a conjunction, verb, or comparison; "you know" counts as a
+single phrase toward "you_know". Only flag genuine grammar errors, quoting the exact words used in the transcript.
+Be specific — reference actual phrases from the transcript wherever you give feedback.`;
+
+  try {
+    const res = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 2000,
+      temperature: 0,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const text = res.content[0].type === 'text' ? res.content[0].text : '{}';
+    const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
+
+    return {
+      grammar: {
+        score: parsed.grammar?.score ?? 5,
+        errors: Array.isArray(parsed.grammar?.errors) ? parsed.grammar.errors : [],
+        suggestions: Array.isArray(parsed.grammar?.suggestions) ? parsed.grammar.suggestions : [],
+      },
+      fillerWords: { ...EMPTY_FILLER_WORD_COUNTS, ...parsed.fillerWords },
+      evaluation: {
+        contentScore: parsed.evaluation?.contentScore ?? 3,
+        deliveryScore: parsed.evaluation?.deliveryScore ?? 3,
+        languageScore: parsed.evaluation?.languageScore ?? 3,
+        overallScore: parsed.evaluation?.overallScore ?? 3,
+        commendations: Array.isArray(parsed.evaluation?.commendations) ? parsed.evaluation.commendations : [],
+        recommendations: Array.isArray(parsed.evaluation?.recommendations) ? parsed.evaluation.recommendations : [],
+        openingFeedback: parsed.evaluation?.openingFeedback ?? '',
+        bodyFeedback: parsed.evaluation?.bodyFeedback ?? '',
+        conclusionFeedback: parsed.evaluation?.conclusionFeedback ?? '',
+      },
+      wordOfDayUsed: parsed.wordOfDayUsed ?? false,
+      summary: parsed.summary ?? 'Speech analysis unavailable.',
+    };
+  } catch (err) {
+    console.error('[ai.service] analyzeSpeech failed:', err);
+    return {
+      grammar: { score: 0, errors: [], suggestions: [] },
+      fillerWords: EMPTY_FILLER_WORD_COUNTS,
+      evaluation: {
+        contentScore: 0, deliveryScore: 0, languageScore: 0, overallScore: 0,
+        commendations: [], recommendations: [],
+        openingFeedback: '', bodyFeedback: '', conclusionFeedback: '',
+      },
+      wordOfDayUsed: false,
+      summary: 'Speech analysis unavailable.',
+    };
+  }
+}

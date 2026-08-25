@@ -2,18 +2,21 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { AlertTriangle, Check, ChevronLeft, ChevronRight, Pause, Play, RotateCcw, SquareCheck } from 'lucide-react';
-import { Button, Select, Spinner } from '../../components/ui';
+import { Button, Select, Spinner, useToast } from '../../components/ui';
 import { TM_GOLD, TM_NAVY, TM_ZONE_COLOR, agendaZone, formatSecs } from '../../components/toastmasters/theme';
+import VoiceRecorder from '../../components/toastmasters/VoiceRecorder';
 import {
   TM_FILLER_COUNT_KEY, TM_FILLER_LABELS, TM_FILLER_WORDS, TM_ROLE_SHORT_LABELS,
   ahCounterApi, agendaApi, meetingsApi, membersApi, timerApi,
 } from '../../services/toastmasters';
-import type { TmAgendaItem, TmAhCounter, TmMeeting, TmMember } from '../../services/toastmasters';
+import type { TmAgendaItem, TmAhCounter, TmMeeting, TmMember, TmSpeechAnalysis } from '../../services/toastmasters';
 
 export default function RunMeeting() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { show, ToastContainer } = useToast();
   const [meeting, setMeeting] = useState<TmMeeting | null>(null);
+  const [aiFillerSuggestion, setAiFillerSuggestion] = useState<{ memberId: string; analysis: TmSpeechAnalysis } | null>(null);
   const [members, setMembers] = useState<TmMember[]>([]);
   const [ahCounters, setAhCounters] = useState<TmAhCounter[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,6 +50,7 @@ export default function RunMeeting() {
     setElapsed(0);
     setRunning(false);
     setSpeakerId(current?.roleAssignment?.member?.id ?? '');
+    setAiFillerSuggestion(null);
   }, [currentIndex, current?.id]);
 
   if (loading) return <div className="flex justify-center py-20"><Spinner size={28} /></div>;
@@ -81,6 +85,26 @@ export default function RunMeeting() {
       if (idx === -1) return [...prev, counter];
       return prev.map((c, i) => (i === idx ? counter : c));
     });
+  }
+
+  function handleAnalysisComplete(memberId: string | undefined, analysis: TmSpeechAnalysis) {
+    if (memberId) setAiFillerSuggestion({ memberId, analysis });
+  }
+
+  async function applyAiFillerCounts() {
+    if (!id || !aiFillerSuggestion) return;
+    const f = aiFillerSuggestion.analysis.fillerWordCounts;
+    const counters = await ahCounterApi.saveAll(id, [{
+      memberId: aiFillerSuggestion.memberId,
+      umCount: f.um, uhCount: f.uh, soCount: f.so, likeCount: f.like, erCount: f.er, youKnowCount: f.you_know, otherCount: 0,
+    }]);
+    setAhCounters((prev) => {
+      const idx = prev.findIndex((c) => c.memberId === aiFillerSuggestion.memberId);
+      if (idx === -1) return [...prev, counters[0]];
+      return prev.map((c, i) => (i === idx ? counters[0] : c));
+    });
+    setAiFillerSuggestion(null);
+    show('AI filler counts applied to Ah Counter');
   }
 
   const speakerCounter = ahCounters.find((c) => c.memberId === speakerId);
@@ -188,13 +212,33 @@ export default function RunMeeting() {
                 </button>
               ))}
             </div>
+            {aiFillerSuggestion && (
+              <div className="mt-2 rounded-md bg-amber-50 border border-amber-200 p-2 flex items-center justify-between gap-2">
+                <span className="text-xs text-amber-800">AI detected {aiFillerSuggestion.analysis.fillerWordCounts.total} fillers</span>
+                <Button size="sm" onClick={applyAiFillerCounts}>Apply to Ah Counter</Button>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
+      {current.roleAssignment?.roleName?.startsWith('SPEAKER_') && (
+        <div className="mt-5">
+          <VoiceRecorder
+            key={current.roleAssignment.id}
+            meetingId={id!}
+            roleAssignmentId={current.roleAssignment.id}
+            speakerName={current.roleAssignment.member?.name ?? 'Speaker'}
+            wordOfDay={meeting.wordOfDay}
+            onAnalysisComplete={(analysis) => handleAnalysisComplete(current.roleAssignment?.memberId ?? undefined, analysis)}
+          />
+        </div>
+      )}
+
       <div className="flex justify-center mt-6">
         <Button variant="ghost" onClick={() => navigate(`/toastmasters/${id}`)}>Exit Runner</Button>
       </div>
+      <ToastContainer />
     </div>
   );
 }

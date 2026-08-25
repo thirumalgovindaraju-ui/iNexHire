@@ -202,6 +202,38 @@ export interface TmTableTopicResponse {
   timerResult?: 'UNDER' | 'WITHIN' | 'OVER' | null;
 }
 
+export interface SpeechGrammarError { text: string; correction: string; rule: string }
+
+export interface SpeechFillerWordCounts {
+  um: number; uh: number; so: number; like: number; er: number; you_know: number;
+  total: number; ratePerMinute: number; worstOffender: string;
+}
+
+export interface TmSpeechAnalysis {
+  id: string;
+  meetingId: string;
+  roleAssignmentId: string;
+  roleAssignment?: TmRoleAssignment;
+  transcript: string;
+  wordCount: number;
+  durationSeconds?: number | null;
+  grammarScore?: number | null;
+  grammarErrors: SpeechGrammarError[];
+  grammarSuggestions: string[];
+  fillerWordCounts: SpeechFillerWordCounts;
+  contentScore?: number | null;
+  deliveryScore?: number | null;
+  languageScore?: number | null;
+  overallScore?: number | null;
+  commendations: string[];
+  recommendations: string[];
+  openingFeedback?: string | null;
+  bodyFeedback?: string | null;
+  conclusionFeedback?: string | null;
+  wordOfDayUsed: boolean;
+  summary?: string | null;
+}
+
 export interface TmMeeting {
   id: string;
   title: string;
@@ -229,5 +261,6 @@ export interface TmMeetingFullReport extends TmMeeting {
   ahCounters?: TmAhCounter[];
   timerLogs?: TmTimerLog[];
   tableTopicResponses?: TmTableTopicResponse[];
+  speechAnalyses?: TmSpeechAnalysis[];
   report?: { bestSpeakerRoleId?: string | null; bestTableTopicId?: string | null; bestEvaluatorRoleId?: string | null } | null;
 }

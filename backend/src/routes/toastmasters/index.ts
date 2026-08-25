@@ -12,6 +12,7 @@ import ahCounterRoutes from './ahcounter.routes';
 import grammarianRoutes from './grammarian.routes';
 import tableTopicsRoutes from './tabletopics.routes';
 import reportRoutes from './report.routes';
+import speechAnalysisRoutes from './speechAnalysis.routes';
 
 const router = Router();
 
@@ -26,6 +27,7 @@ router.use(ahCounterRoutes);
 router.use(grammarianRoutes);
 router.use(tableTopicsRoutes);
 router.use(reportRoutes);
+router.use(speechAnalysisRoutes);
 router.use(meetingsRoutes); // last: owns the bare '/' and '/:id' catch-alls
 
 export default router;

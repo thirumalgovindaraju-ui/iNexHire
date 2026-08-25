@@ -1,14 +1,14 @@
 // src/pages/toastmasters/AhCounterLive.tsx — live tap-to-count filler word tracker
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Quote, RotateCcw, Save, Volume2, VolumeX } from 'lucide-react';
+import { Quote, RotateCcw, Save, Sparkles, Volume2, VolumeX } from 'lucide-react';
 import { Button, PageHeader, Spinner, useToast } from '../../components/ui';
 import { extractError } from '../../services/api';
 import {
   TM_FILLER_COUNT_KEY, TM_FILLER_LABELS, TM_FILLER_WORDS, TM_ROLE_LABELS,
-  ahCounterApi, meetingsApi,
+  ahCounterApi, meetingsApi, speechAnalysisApi,
 } from '../../services/toastmasters';
-import type { TmMeeting } from '../../services/toastmasters';
+import type { TmMeeting, TmSpeechAnalysis } from '../../services/toastmasters';
 
 type Counts = Record<(typeof TM_FILLER_WORDS)[number], number>;
 interface Tally { memberId: string; name: string; roles: string[]; counts: Counts }
@@ -80,12 +80,14 @@ export default function AhCounterLive() {
   const [tallies, setTallies] = useState<Tally[]>([]);
   const [loading, setLoading] = useState(true);
   const [soundOn, setSoundOn] = useState(false);
+  const [speechAnalyses, setSpeechAnalyses] = useState<TmSpeechAnalysis[]>([]);
   const talliesRef = useRef<Tally[]>([]);
   talliesRef.current = tallies;
 
   useEffect(() => {
     if (!id) return;
-    Promise.all([meetingsApi.get(id), ahCounterApi.list(id)]).then(([m, existing]) => {
+    Promise.all([meetingsApi.get(id), ahCounterApi.list(id), speechAnalysisApi.listForMeeting(id)]).then(([m, existing, analyses]) => {
+      setSpeechAnalyses(analyses);
       setMeeting(m);
       const byMember = new Map(existing.map((c) => [c.memberId, c]));
       const participants = new Map<string, Tally>();
@@ -124,6 +126,16 @@ export default function AhCounterLive() {
     const interval = setInterval(() => persist(true), 30000);
     return () => clearInterval(interval);
   }, [id]);
+
+  function useAiCounts(memberId: string, analysis: TmSpeechAnalysis) {
+    const f = analysis.fillerWordCounts;
+    setTallies((prev) => prev.map((t) => (
+      t.memberId === memberId
+        ? { ...t, counts: { um: f.um, uh: f.uh, so: f.so, like: f.like, er: f.er, you_know: f.you_know, other: t.counts.other } }
+        : t
+    )));
+    show('AI filler counts applied — review and Save All when ready');
+  }
 
   function adjust(memberId: string, word: string, delta: number) {
     if (delta > 0 && soundOn) beep();
@@ -183,6 +195,7 @@ export default function AhCounterLive() {
         {tallies.map((t) => {
           const total = TM_FILLER_WORDS.reduce((s, w) => s + t.counts[w], 0);
           const zone = zoneColor(total);
+          const analysis = speechAnalyses.find((a) => a.roleAssignment?.memberId === t.memberId);
           return (
             <div key={t.memberId} className="rounded-lg border-2 bg-white p-3" style={{ borderColor: zone.border }}>
               <div className="flex items-center justify-between mb-1">
@@ -192,6 +205,14 @@ export default function AhCounterLive() {
                 </div>
                 <span className="text-lg font-extrabold" style={{ color: zone.text }}>{total}</span>
               </div>
+              {analysis && (
+                <button
+                  onClick={() => useAiCounts(t.memberId, analysis)}
+                  className="w-full flex items-center justify-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 text-amber-800 text-xs font-medium py-1 mb-2"
+                >
+                  <Sparkles size={11} /> Use AI ({analysis.fillerWordCounts.total} detected)
+                </button>
+              )}
               <div className="grid grid-cols-2 gap-1.5 mt-2">
                 {TM_FILLER_WORDS.map((w) => (
                   <TapButton

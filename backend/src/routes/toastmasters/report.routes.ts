@@ -27,6 +27,7 @@ async function loadFullMeeting(meetingId: string, organizationId: string) {
       grammarianLog: true,
       timerLogs: { include: { roleAssignment: { include: { member: true } } } },
       tableTopicResponses: { include: { member: true } },
+      speechAnalyses: { include: { roleAssignment: { include: { member: true } } } },
       report: true,
     },
   });

@@ -1,9 +1,10 @@
 // src/components/toastmasters/EvaluationForm.tsx — full speech evaluation form
 import { useState } from 'react';
-import { Star } from 'lucide-react';
+import { Sparkles, Star } from 'lucide-react';
 import { Badge, Button, Textarea } from '../ui';
+import { TM_GOLD } from './theme';
 import type { SubmitEvaluationInput } from '../../services/toastmasters';
-import type { TmEvaluation, TmRoleAssignment } from '../../services/toastmasters';
+import type { TmEvaluation, TmRoleAssignment, TmSpeechAnalysis } from '../../services/toastmasters';
 
 function StarRating({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
   return (
@@ -20,10 +21,11 @@ function StarRating({ label, value, onChange }: { label: string; value: number; 
   );
 }
 
-export default function EvaluationForm({ speaker, evaluator, existing, onSubmit, saving }: {
+export default function EvaluationForm({ speaker, evaluator, existing, aiSuggestion, onSubmit, saving }: {
   speaker: TmRoleAssignment;
   evaluator: TmRoleAssignment;
   existing?: TmEvaluation;
+  aiSuggestion?: TmSpeechAnalysis | null;
   onSubmit: (data: SubmitEvaluationInput) => void;
   saving?: boolean;
 }) {
@@ -51,6 +53,19 @@ export default function EvaluationForm({ speaker, evaluator, existing, onSubmit,
 
   const duration = speaker.greenMins != null && speaker.redMins != null ? `${speaker.greenMins}-${speaker.redMins} mins` : '—';
 
+  function applyAiSuggestions() {
+    if (!aiSuggestion) return;
+    setRatingContent(aiSuggestion.contentScore ?? ratingContent);
+    setRatingDelivery(aiSuggestion.deliveryScore ?? ratingDelivery);
+    setRatingLanguage(aiSuggestion.languageScore ?? ratingLanguage);
+    setOverallRating(aiSuggestion.overallScore ?? overallRating);
+    if (aiSuggestion.commendations.length) setCommendations(aiSuggestion.commendations.join('\n'));
+    if (aiSuggestion.recommendations.length) setRecommendations(aiSuggestion.recommendations.join('\n'));
+    if (aiSuggestion.openingFeedback) setOpeningFeedback(aiSuggestion.openingFeedback);
+    if (aiSuggestion.bodyFeedback) setBodyFeedback(aiSuggestion.bodyFeedback);
+    if (aiSuggestion.conclusionFeedback) setConclusionFeedback(aiSuggestion.conclusionFeedback);
+  }
+
   return (
     <div className="rounded-lg border border-surface-200 bg-white p-4 flex flex-col gap-4">
       <div className="flex items-start justify-between">
@@ -63,6 +78,16 @@ export default function EvaluationForm({ speaker, evaluator, existing, onSubmit,
         </div>
         <Badge variant={existing?.status === 'SUBMITTED' ? 'green' : 'gray'}>{existing?.status ?? 'DRAFT'}</Badge>
       </div>
+
+      {aiSuggestion && (
+        <button
+          onClick={applyAiSuggestions}
+          className="flex items-center justify-center gap-2 rounded-lg py-2 text-sm font-semibold border-2 self-start px-3"
+          style={{ borderColor: TM_GOLD, color: '#a3821c' }}
+        >
+          <Sparkles size={13} /> Apply AI Suggestions
+        </button>
+      )}
 
       <div className="flex flex-col gap-2">
         <StarRating label="Content & Structure" value={ratingContent} onChange={setRatingContent} />

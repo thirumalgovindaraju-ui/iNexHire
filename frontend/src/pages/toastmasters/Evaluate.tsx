@@ -4,12 +4,13 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Award } from 'lucide-react';
 import { Badge, Button, PageHeader, Select, Spinner, Textarea, useToast } from '../../components/ui';
 import EvaluationForm from '../../components/toastmasters/EvaluationForm';
+import VoiceRecorder from '../../components/toastmasters/VoiceRecorder';
 import { extractError } from '../../services/api';
 import {
-  TM_SPEAKER_EVALUATOR_PAIRS, evaluationsApi, generalEvaluationApi, meetingsApi,
+  TM_SPEAKER_EVALUATOR_PAIRS, evaluationsApi, generalEvaluationApi, meetingsApi, speechAnalysisApi,
 } from '../../services/toastmasters';
 import type {
-  SubmitEvaluationInput, TmEvaluation, TmGeneralEvaluation, TmMeeting,
+  SubmitEvaluationInput, TmEvaluation, TmGeneralEvaluation, TmMeeting, TmSpeechAnalysis,
 } from '../../services/toastmasters';
 
 export default function Evaluate() {
@@ -22,6 +23,7 @@ export default function Evaluate() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState(0);
+  const [speechAnalyses, setSpeechAnalyses] = useState<Record<string, TmSpeechAnalysis | null>>({});
 
   const [overallFeedback, setOverallFeedback] = useState('');
   const [evaluatorFeedback, setEvaluatorFeedback] = useState<Record<string, string>>({});
@@ -41,16 +43,23 @@ export default function Evaluate() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  if (loading) return <div className="flex justify-center py-20"><Spinner size={28} /></div>;
-  if (!meeting) return <p className="p-6 text-surface-500">Meeting not found.</p>;
-
-  const roles = meeting.roleAssignments ?? [];
+  const roles = meeting?.roleAssignments ?? [];
   const pairs = TM_SPEAKER_EVALUATOR_PAIRS
     .map(([sName, eName]) => ({ speaker: roles.find((r) => r.roleName === sName), evaluator: roles.find((r) => r.roleName === eName) }))
     .filter((p) => p.speaker && p.evaluator) as { speaker: NonNullable<typeof roles[number]>; evaluator: NonNullable<typeof roles[number]> }[];
 
   const activePair = pairs[activeTab];
   const activeEvaluation = activePair ? evaluations.find((e) => e.speakerRoleId === activePair.speaker.id) : undefined;
+
+  useEffect(() => {
+    if (!activePair || activePair.speaker.id in speechAnalyses) return;
+    speechAnalysisApi.getForRole(activePair.speaker.id).then((analysis) => {
+      setSpeechAnalyses((prev) => ({ ...prev, [activePair.speaker.id]: analysis }));
+    });
+  }, [activePair?.speaker.id]);
+
+  if (loading) return <div className="flex justify-center py-20"><Spinner size={28} /></div>;
+  if (!meeting) return <p className="p-6 text-surface-500">Meeting not found.</p>;
 
   async function handleSubmit(data: SubmitEvaluationInput) {
     if (!id) return;
@@ -118,14 +127,25 @@ export default function Evaluate() {
       </div>
 
       {activePair ? (
-        <EvaluationForm
-          key={activePair.speaker.id}
-          speaker={activePair.speaker}
-          evaluator={activePair.evaluator}
-          existing={activeEvaluation}
-          onSubmit={handleSubmit}
-          saving={saving}
-        />
+        <div className="flex flex-col gap-4">
+          <VoiceRecorder
+            key={activePair.speaker.id}
+            meetingId={id!}
+            roleAssignmentId={activePair.speaker.id}
+            speakerName={activePair.speaker.member?.name ?? 'Speaker'}
+            wordOfDay={meeting.wordOfDay}
+            onAnalysisComplete={(analysis) => setSpeechAnalyses((prev) => ({ ...prev, [activePair.speaker.id]: analysis }))}
+          />
+          <EvaluationForm
+            key={activePair.speaker.id}
+            speaker={activePair.speaker}
+            evaluator={activePair.evaluator}
+            existing={activeEvaluation}
+            aiSuggestion={speechAnalyses[activePair.speaker.id]}
+            onSubmit={handleSubmit}
+            saving={saving}
+          />
+        </div>
       ) : (
         <p className="text-sm text-surface-400 italic">No speaker/evaluator pairs assigned yet.</p>
       )}

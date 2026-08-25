@@ -1,6 +1,6 @@
 // src/components/toastmasters/MeetingReport.tsx — full 9-section printable meeting report
-import { Award, ArrowRight } from 'lucide-react';
-import { Badge, Button, Select } from '../ui';
+import { Award, ArrowRight, Sparkles } from 'lucide-react';
+import { Badge, Select } from '../ui';
 import MeetingHeaderCard from './MeetingHeaderCard';
 import { formatSecs } from './theme';
 import { TM_FILLER_LABELS, TM_FILLER_WORDS, TM_ROLE_LABELS } from '../../services/toastmasters';
@@ -98,15 +98,34 @@ export default function MeetingReport({ report, nextMeeting, awards, onAwardsCha
         <section>
           <h2 className="font-semibold text-surface-900 mb-2">Speech Evaluations</h2>
           <div className="flex flex-col gap-2">
-            {report.evaluations!.map((e) => (
-              <div key={e.id} className="rounded-lg border border-surface-200 bg-white p-3 text-sm">
-                <p className="font-medium">{e.speaker?.speechTitle ?? 'Untitled'} <span className="text-surface-400">— {e.speaker?.member?.name ?? 'Unassigned'}</span></p>
-                <p className="text-surface-500 text-xs">Project: {e.speaker?.pathwaysProject ?? '—'} · Evaluator: {e.evaluator?.member?.name ?? 'Unassigned'}</p>
-                <p className="text-surface-500 text-xs mt-1">Content {e.ratingContent ?? '—'} · Delivery {e.ratingDelivery ?? '—'} · Language {e.ratingLanguage ?? '—'} · Overall {e.overallRating ?? '—'}</p>
-                {e.commendations && <p className="mt-1"><span className="text-green-600 font-medium">Well: </span>{e.commendations}</p>}
-                {e.recommendations && <p><span className="text-amber-600 font-medium">Improve: </span>{e.recommendations}</p>}
-              </div>
-            ))}
+            {report.evaluations!.map((e) => {
+              const analysis = report.speechAnalyses?.find((a) => a.roleAssignmentId === e.speakerRoleId);
+              return (
+                <div key={e.id} className="rounded-lg border border-surface-200 bg-white p-3 text-sm">
+                  <div className="flex items-center justify-between">
+                    <p className="font-medium">{e.speaker?.speechTitle ?? 'Untitled'} <span className="text-surface-400">— {e.speaker?.member?.name ?? 'Unassigned'}</span></p>
+                    {analysis && <Badge variant="purple" className="flex items-center gap-1"><Sparkles size={10} /> AI Analyzed</Badge>}
+                  </div>
+                  <p className="text-surface-500 text-xs">Project: {e.speaker?.pathwaysProject ?? '—'} · Evaluator: {e.evaluator?.member?.name ?? 'Unassigned'}</p>
+                  <p className="text-surface-500 text-xs mt-1">Content {e.ratingContent ?? '—'} · Delivery {e.ratingDelivery ?? '—'} · Language {e.ratingLanguage ?? '—'} · Overall {e.overallRating ?? '—'}</p>
+                  {e.commendations && <p className="mt-1"><span className="text-green-600 font-medium">Well: </span>{e.commendations}</p>}
+                  {e.recommendations && <p><span className="text-amber-600 font-medium">Improve: </span>{e.recommendations}</p>}
+                  {analysis && (
+                    <div className="mt-2 pt-2 border-t border-surface-100 flex items-center gap-3 text-xs text-surface-500">
+                      <span>Grammar: <strong className="text-surface-900">{analysis.grammarScore ?? '—'}/10</strong></span>
+                      <span>Fillers: <strong className="text-surface-900">{analysis.fillerWordCounts.total}</strong> ({analysis.fillerWordCounts.ratePerMinute}/min)</span>
+                      <span>{analysis.wordCount} words</span>
+                    </div>
+                  )}
+                  {analysis && (
+                    <details className="mt-1">
+                      <summary className="text-xs text-brand-600 cursor-pointer">View transcript</summary>
+                      <p className="text-xs text-surface-600 mt-1 whitespace-pre-wrap">{analysis.transcript}</p>
+                    </details>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </section>
       )}
