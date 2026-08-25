@@ -18,7 +18,42 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
-// Auto-refresh on 401
+// Shared, de-duplicated token refresh — if several requests 401 at once (e.g. a
+// page firing Promise.all on load), they all await the same in-flight refresh
+// instead of each independently hitting POST /auth/refresh.
+let refreshPromise: Promise<string> | null = null;
+
+async function refreshAccessToken(): Promise<string> {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    const refreshToken = useAuthStore.getState().refreshToken;
+    if (!refreshToken) throw new Error('No refresh token');
+    const { data } = await axios.post(`${BASE_URL}/auth/refresh`, { refreshToken });
+    useAuthStore.getState().setAccessToken(data.accessToken);
+    return data.accessToken as string;
+  })();
+
+  try {
+    return await refreshPromise;
+  } finally {
+    refreshPromise = null;
+  }
+}
+
+// accessToken is deliberately excluded from persisted auth state (see
+// authStore.ts's partialize) — on a fresh page load it's null even though
+// isAuthenticated/refreshToken were restored from localStorage. Call this once
+// on app boot so the first requests a page fires don't have to 401 their way
+// into the retry path below just to get a token.
+export function ensureAccessToken(): Promise<string | null> {
+  const { isAuthenticated, accessToken, refreshToken } = useAuthStore.getState();
+  if (!isAuthenticated || accessToken || !refreshToken) return Promise.resolve(accessToken);
+  return refreshAccessToken().catch(() => null);
+}
+
+// Auto-refresh on 401 — the fallback for any request that races ahead of
+// ensureAccessToken, or whose access token expired mid-session.
 apiClient.interceptors.response.use(
   (res) => res,
   async (error: AxiosError) => {
@@ -26,12 +61,8 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401 && !original._retry) {
       original._retry = true;
       try {
-        const refreshToken = useAuthStore.getState().refreshToken;
-        if (!refreshToken) throw new Error('No refresh token');
-
-        const { data } = await axios.post(`${BASE_URL}/auth/refresh`, { refreshToken });
-        useAuthStore.getState().setAccessToken(data.accessToken);
-        original.headers.Authorization = `Bearer ${data.accessToken}`;
+        const token = await refreshAccessToken();
+        original.headers.Authorization = `Bearer ${token}`;
         return apiClient(original);
       } catch {
         useAuthStore.getState().logout();

@@ -26,9 +26,24 @@ export default function RoleAssignment() {
   useEffect(() => {
     if (!id) return;
     Promise.all([meetingsApi.get(id), membersApi.list()])
-      .then(([m, mem]) => { setMeeting(m); setMembers(mem); setRoles(m.roleAssignments ?? []); })
+      .then(([m, mem]) => {
+        // TEMPORARY debug logging — remove once the empty-dropdown issue is confirmed fixed.
+        console.log('[RoleAssignment] GET /toastmasters/members raw response:', mem);
+        console.log('[RoleAssignment] members count:', mem.length);
+        setMeeting(m);
+        setMembers(mem);
+        setRoles(m.roleAssignments ?? []);
+      })
+      .catch((err) => {
+        console.error('[RoleAssignment] failed to load meeting/members:', err);
+        show(extractError(err), 'error');
+      })
       .finally(() => setLoading(false));
   }, [id]);
+
+  useEffect(() => {
+    console.log('[RoleAssignment] members state after setMembers:', members, 'length:', members.length);
+  }, [members]);
 
   const ordered = TM_ROLE_ASSIGNMENT_ORDER
     .map((name) => roles.find((r) => r.roleName === name))

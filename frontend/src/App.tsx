@@ -1,6 +1,8 @@
 // src/App.tsx — NexHire v3 Complete Enterprise Edition
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
+import { ensureAccessToken } from './services/api';
 import DashboardLayout from './layouts/DashboardLayout';
 import AuthLayout from './layouts/AuthLayout';
 import CandidateLayout from './layouts/CandidateLayout';
@@ -77,6 +79,10 @@ function GuestRoute({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  useEffect(() => {
+    ensureAccessToken();
+  }, []);
+
   return (
     <BrowserRouter>
       <InstallPWA />
