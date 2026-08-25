@@ -4,12 +4,16 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { AlertTriangle, Check, ChevronLeft, ChevronRight, Pause, Play, RotateCcw, SquareCheck } from 'lucide-react';
 import { Button, Select, Spinner, useToast } from '../../components/ui';
 import { TM_GOLD, TM_NAVY, TM_ZONE_COLOR, agendaZone, formatSecs } from '../../components/toastmasters/theme';
+import { findRoleForActivity } from '../../components/toastmasters/matchAgendaRole';
 import VoiceRecorder from '../../components/toastmasters/VoiceRecorder';
 import {
   TM_FILLER_COUNT_KEY, TM_FILLER_LABELS, TM_FILLER_WORDS, TM_ROLE_SHORT_LABELS,
   ahCounterApi, agendaApi, meetingsApi, membersApi, timerApi,
 } from '../../services/toastmasters';
 import type { TmAgendaItem, TmAhCounter, TmMeeting, TmMember, TmSpeechAnalysis } from '../../services/toastmasters';
+
+// Roles whose agenda slot involves giving a speech worth recording/analyzing.
+const RECORDABLE_ROLES = new Set(['SAA', 'SPEAKER_1', 'SPEAKER_2', 'SPEAKER_3', 'TABLE_TOPICS_MASTER']);
 
 export default function RunMeeting() {
   const { id } = useParams<{ id: string }>();
@@ -47,9 +51,10 @@ export default function RunMeeting() {
   const current = items[currentIndex];
 
   useEffect(() => {
+    const role = current?.roleAssignment ?? (current && meeting ? findRoleForActivity(current.activityName, meeting.roleAssignments ?? []) : undefined);
     setElapsed(0);
     setRunning(false);
-    setSpeakerId(current?.roleAssignment?.member?.id ?? '');
+    setSpeakerId(role?.member?.id ?? '');
     setAiFillerSuggestion(null);
   }, [currentIndex, current?.id]);
 
@@ -57,8 +62,13 @@ export default function RunMeeting() {
   if (!meeting) return <p className="p-6 text-surface-500">Meeting not found.</p>;
   if (items.length === 0) return <p className="p-6 text-surface-500">This meeting has no agenda items yet.</p>;
 
-  const greenMins = current.roleAssignment?.greenMins ?? current.durationMins ?? 5;
-  const yellowMins = current.roleAssignment?.yellowMins ?? (current.durationMins ?? 5) + 1;
+  // Agenda items created before this fix (or edited by hand) may not have a
+  // roleAssignmentId set — fall back to matching the activity name against
+  // the meeting's own roles rather than showing "No role linked".
+  const effectiveRole = current.roleAssignment ?? findRoleForActivity(current.activityName, meeting.roleAssignments ?? []);
+
+  const greenMins = effectiveRole?.greenMins ?? current.durationMins ?? 5;
+  const yellowMins = effectiveRole?.yellowMins ?? (current.durationMins ?? 5) + 1;
   const zone = agendaZone(elapsed, greenMins, yellowMins);
   const progressPct = Math.round((currentIndex / items.length) * 100);
 
@@ -69,9 +79,9 @@ export default function RunMeeting() {
 
   async function markDone() {
     setRunning(false);
-    if (current.roleAssignment) {
+    if (effectiveRole) {
       const result = zone === 'green' ? 'UNDER' : zone === 'yellow' ? 'WITHIN' : 'OVER';
-      await timerApi.submit(id!, { roleAssignmentId: current.roleAssignment.id, actualDurationSecs: elapsed, result });
+      await timerApi.submit(id!, { roleAssignmentId: effectiveRole.id, actualDurationSecs: elapsed, result });
     }
     await agendaApi.update(current.id, { actualEnd: new Date().toISOString() });
     goTo(currentIndex + 1);
@@ -123,11 +133,12 @@ export default function RunMeeting() {
         <div className="col-span-2 flex flex-col gap-4">
           <div className="rounded-xl border-4 p-6" style={{ borderColor: TM_GOLD, background: TM_NAVY }}>
             <p className="text-xs uppercase tracking-wide" style={{ color: TM_GOLD }}>
-              {current.roleAssignment ? TM_ROLE_SHORT_LABELS[current.roleAssignment.roleName] ?? current.roleAssignment.roleName : 'No role linked'}
+              {effectiveRole ? TM_ROLE_SHORT_LABELS[effectiveRole.roleName] ?? effectiveRole.roleName : 'No role linked'}
             </p>
             <h1 className="text-white text-xl font-bold mt-1">{current.activityName}</h1>
             <p className="text-white/60 text-sm mt-1">
               Planned {current.durationMins ?? '—'} mins · {current.plannedStart ?? '—'} to {current.plannedEnd ?? '—'}
+              {effectiveRole?.member?.name && ` · ${effectiveRole.member.name}`}
             </p>
 
             <div className="flex flex-col items-center mt-5">
@@ -222,15 +233,15 @@ export default function RunMeeting() {
         </div>
       </div>
 
-      {current.roleAssignment?.roleName?.startsWith('SPEAKER_') && (
+      {effectiveRole && RECORDABLE_ROLES.has(effectiveRole.roleName) && (
         <div className="mt-5">
           <VoiceRecorder
-            key={current.roleAssignment.id}
+            key={effectiveRole.id}
             meetingId={id!}
-            roleAssignmentId={current.roleAssignment.id}
-            speakerName={current.roleAssignment.member?.name ?? 'Speaker'}
+            roleAssignmentId={effectiveRole.id}
+            speakerName={effectiveRole.member?.name ?? 'Speaker'}
             wordOfDay={meeting.wordOfDay}
-            onAnalysisComplete={(analysis) => handleAnalysisComplete(current.roleAssignment?.memberId ?? undefined, analysis)}
+            onAnalysisComplete={(analysis) => handleAnalysisComplete(effectiveRole?.memberId ?? undefined, analysis)}
           />
         </div>
       )}

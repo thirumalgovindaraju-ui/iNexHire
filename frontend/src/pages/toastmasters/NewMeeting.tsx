@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { GripVertical, Plus, Trash2 } from 'lucide-react';
 import { Button, Card, Input, PageHeader, useToast } from '../../components/ui';
 import { addMinutes } from '../../components/toastmasters/theme';
+import { findRoleForActivity } from '../../components/toastmasters/matchAgendaRole';
 import { extractError } from '../../services/api';
 import { agendaApi, isColdStartTimeout, meetingsApi, withColdStartRetry } from '../../services/toastmasters';
 
@@ -77,9 +78,11 @@ export default function NewMeeting() {
         }),
         () => show('Server is waking up, retrying...', 'error')
       );
+      const roles = meeting.roleAssignments ?? [];
       await agendaApi.replaceAll(meeting.id, withTimes.map((row, i) => ({
         sequence: i, activityName: row.activityName, durationMins: row.durationMins,
         plannedStart: row.start, plannedEnd: row.end,
+        roleAssignmentId: findRoleForActivity(row.activityName, roles)?.id,
       })));
       show('Meeting created!');
       navigate(`/toastmasters/${meeting.id}`);
