@@ -18,6 +18,7 @@ import adaptiveRoutes from './routes/adaptive.routes';
 import complianceRoutes from './routes/compliance.routes';
 import offerRoutes from './routes/offer.routes';
 import sentimentRoutes from './routes/sentiment.routes';
+import communicationAssessmentRoutes from './routes/communicationAssessment.routes';
 import cultureFitRoutes from './routes/culturefit.routes';
 import retentionRoutes from './routes/retention.routes';
 import chatbotRoutes from './routes/chatbot.routes';
@@ -88,6 +89,7 @@ export function createApp() {
   app.use('/api/candidates', candidateRoutes);
   app.use('/api/interviews', interviewRoutes);
   app.use('/api/interviews', adaptiveRoutes);
+  app.use('/api/interviews', communicationAssessmentRoutes);
   app.use('/api/reports', reportRoutes);
   app.use('/api/dashboard', dashboardRoutes);
   app.use('/api/upload', uploadRoutes);

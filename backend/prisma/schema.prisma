@@ -199,6 +199,7 @@ model Interview {
   liveInterview        LiveInterview?
   codingAssessments    CodingAssessment[]
   videoHighlights      VideoHighlight[]
+  communicationAssessment CommunicationAssessment?
 
   @@map("interviews")
 }
@@ -384,6 +385,38 @@ model RetentionPrediction {
   interview Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
 
   @@map("retention_predictions")
+}
+
+// ─── Communication Assessment Scorecard ────────────────────────────────────────
+// Speech/communication-quality scoring only — never interview content/correctness.
+// Generated from the transcript alone (see ai.service.ts generateCommunicationAssessment);
+// phoneticClarity/vocalProsody are therefore best-effort, transcript-inferred signals,
+// not real audio analysis (this app has no audio-level signal, same constraint noted
+// on VideoHighlight below). Treat as a supplementary signal, not a standalone hiring
+// decision input — see BiasAudit for the equivalent fairness-review pattern.
+
+model CommunicationAssessment {
+  id                             String   @id @default(cuid())
+  interviewId                    String   @unique
+  overallScore                   Int      // 0-100
+  communicationScore             Int      // 0-100, avg of the 5 sub-scores below
+  communicationLevel             String   // CEFR band: A1 | A2 | B1 | B2 | C1 | C2
+  summary                        String   @db.Text
+  startedAt                      DateTime
+  endedAt                        DateTime
+  durationSeconds                Int
+  linguisticAccuracy             Json     // { score, comments, errorTypes: string[] }
+  phoneticClarity                Json     // { score, comments, errorTypes: string[] }
+  vocalProsody                   Json     // { score, comments, errorTypes: string[] }
+  operationalFluency             Json     // { score, comments, errorTypes: string[] }
+  lexicalInteractiveIntelligence Json     // { score, comments, errorTypes: string[] }
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  interview Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  @@map("communication_assessments")
 }
 
 model ChatSession {

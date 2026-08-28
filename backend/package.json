@@ -10,7 +10,8 @@
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "db:seed": "tsx src/seed.ts",
-    "lint": "eslint src --ext .ts"
+    "lint": "eslint src --ext .ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.116.0",
@@ -42,7 +43,10 @@
     "@types/node": "^20.11.28",
     "@types/nodemailer": "^6.4.14",
     "@types/uuid": "^9.0.8",
+    "@types/supertest": "^6.0.2",
+    "supertest": "^6.3.4",
     "tsx": "^4.7.1",
-    "typescript": "^5.4.2"
+    "typescript": "^5.4.2",
+    "vitest": "^1.4.0"
   }
 }

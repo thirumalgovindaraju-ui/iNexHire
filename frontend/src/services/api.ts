@@ -335,6 +335,19 @@ export const reportsApi = {
   },
 };
 
+// ─── Communication Assessment Scorecard ────────────────────────────────────────
+
+export const communicationAssessmentApi = {
+  get: async (interviewId: string) => {
+    const res = await apiClient.get(`/interviews/${interviewId}/assessment`);
+    return res.data.assessment;
+  },
+  generate: async (interviewId: string) => {
+    const res = await apiClient.post(`/interviews/${interviewId}/assessment/generate`);
+    return res.data.assessment;
+  },
+};
+
 // ─── Upload ───────────────────────────────────────────────────────────────────
 
 export const uploadApi = {

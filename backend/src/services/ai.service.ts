@@ -652,6 +652,189 @@ Return ONLY valid JSON:
   }
 }
 
+// ─── Communication Assessment Scorecard ────────────────────────────────────────
+// Scores SPEECH/COMMUNICATION QUALITY ONLY — never interview content/correctness
+// (that's generateReport's job). Phonetic Clarity and Vocal Prosody are best-effort,
+// inferred from the transcript alone (this app has no audio-level signal — see the
+// VideoHighlight model comment in schema.prisma for the same constraint elsewhere).
+// Treat this as a supplementary signal only, never a standalone hiring decision input —
+// see scanBias for the equivalent fairness-review pattern used on job postings.
+
+export interface CommunicationSubMetric {
+  score: number; // 0-100
+  comments: string;
+  errorTypes: string[];
+}
+
+export interface CommunicationAssessmentResult {
+  overallScore: number;
+  communicationScore: number;
+  communicationLevel: 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2';
+  summary: string;
+  linguisticAccuracy: CommunicationSubMetric;
+  phoneticClarity: CommunicationSubMetric;
+  vocalProsody: CommunicationSubMetric;
+  operationalFluency: CommunicationSubMetric;
+  lexicalInteractiveIntelligence: CommunicationSubMetric;
+}
+
+// Fixed score -> CEFR band mapping. Exported so tests can assert the boundaries directly.
+export const CEFR_BANDS: Array<{ min: number; band: CommunicationAssessmentResult['communicationLevel'] }> = [
+  { min: 95, band: 'C2' },
+  { min: 85, band: 'C1' },
+  { min: 70, band: 'B2' },
+  { min: 55, band: 'B1' },
+  { min: 40, band: 'A2' },
+  { min: 0, band: 'A1' },
+];
+
+export function scoreToCefrBand(score: number): CommunicationAssessmentResult['communicationLevel'] {
+  const clamped = Math.max(0, Math.min(100, score));
+  return CEFR_BANDS.find((b) => clamped >= b.min)!.band;
+}
+
+const COMM_SUB_METRIC_FALLBACK: CommunicationSubMetric = {
+  score: 50,
+  comments: 'Assessment unavailable.',
+  errorTypes: [],
+};
+
+function communicationAssessmentFallback(): CommunicationAssessmentResult {
+  return {
+    overallScore: 50,
+    communicationScore: 50,
+    communicationLevel: 'B1',
+    summary: 'Communication assessment unavailable.',
+    linguisticAccuracy: { ...COMM_SUB_METRIC_FALLBACK },
+    phoneticClarity: { ...COMM_SUB_METRIC_FALLBACK },
+    vocalProsody: { ...COMM_SUB_METRIC_FALLBACK },
+    operationalFluency: { ...COMM_SUB_METRIC_FALLBACK },
+    lexicalInteractiveIntelligence: { ...COMM_SUB_METRIC_FALLBACK },
+  };
+}
+
+function normalizeSubMetric(raw: any): CommunicationSubMetric {
+  return {
+    score: typeof raw?.score === 'number' ? Math.max(0, Math.min(100, Math.round(raw.score))) : 50,
+    comments: typeof raw?.comments === 'string' ? raw.comments : '',
+    errorTypes: Array.isArray(raw?.errorTypes) ? raw.errorTypes.filter((t: unknown) => typeof t === 'string') : [],
+  };
+}
+
+function buildCommunicationAssessmentPrompt(transcript: string, retryNotice = false): string {
+  const retryPrefix = retryNotice
+    ? 'Your previous response was not valid JSON. Return ONLY the JSON object below, no other text, no markdown code fences.\n\n'
+    : '';
+
+  return `${retryPrefix}You are a speech and communication assessment expert (similar to a CEFR language examiner).
+Score ONLY the CANDIDATE's speech/communication quality in this job interview transcript. Do NOT evaluate
+whether their answers are factually or technically correct, relevant to the role, or a good interview
+answer — that is scored elsewhere. Score purely how they communicate.
+
+INTERVIEW TRANSCRIPT (interviewer and candidate turns):
+"""
+${transcript.slice(0, 6000)}
+"""
+
+Score these 5 dimensions, each 0-100, with a 1-2 sentence comment and a list of error tags chosen ONLY
+from that dimension's controlled tag list below (use an empty array if none apply):
+
+1. Linguistic Accuracy — grammar, article/preposition/tense errors, sentence structure.
+   Allowed tags: "Article Misuse", "Preposition Error", "Tense Error", "Subject-Verb Agreement", "Sentence Fragment", "Run-on Sentence", "Word Order Error"
+
+2. Phonetic Clarity & Articulation — intelligibility, diction, mispronunciations. This is a TRANSCRIPT
+   ONLY — there is no audio signal available, so infer only what's visible in the text (e.g. repeated
+   spelling-out of a word, garbled STT output) and otherwise score conservatively around 60-75 while
+   noting the limitation.
+   Allowed tags: "Unclear Diction", "Mispronunciation", "Word Stress Error", "Consonant Cluster Difficulty", "Audio Signal Unavailable"
+
+3. Vocal Prosody — tone variation, monotone delivery, emphasis. Also transcript-only (best-effort) —
+   infer from punctuation/phrasing patterns where possible, otherwise score conservatively and use the
+   "Audio Signal Unavailable" tag.
+   Allowed tags: "Monotone Delivery", "Flat Intonation", "Inappropriate Emphasis", "Audio Signal Unavailable"
+
+4. Operational Fluency — fillers, false starts, repetitions, run-on delivery, forward momentum.
+   Allowed tags: "Excessive Fillers", "False Start", "Repetitive Language", "Long Pause", "Run-on Delivery"
+
+5. Lexical & Interactive Intelligence — vocabulary range, relevance/conciseness of answers, appropriate
+   use of technical terms.
+   Allowed tags: "Limited Vocabulary Range", "Off-Topic Response", "Overly Verbose", "Imprecise Word Choice", "Inappropriate Register"
+
+Return ONLY valid JSON, no markdown, no other text:
+{
+  "linguisticAccuracy": { "score": 0, "comments": "", "errorTypes": [] },
+  "phoneticClarity": { "score": 0, "comments": "", "errorTypes": [] },
+  "vocalProsody": { "score": 0, "comments": "", "errorTypes": [] },
+  "operationalFluency": { "score": 0, "comments": "", "errorTypes": [] },
+  "lexicalInteractiveIntelligence": { "score": 0, "comments": "", "errorTypes": [] },
+  "summary": "<1-2 sentence overall narrative of the candidate's communication quality>"
+}`;
+}
+
+export async function generateCommunicationAssessment(
+  transcript: string,
+  interviewMeta: { startedAt: Date; endedAt: Date },
+): Promise<CommunicationAssessmentResult & { startedAt: Date; endedAt: Date; durationSeconds: number }> {
+  const durationSeconds = Math.max(
+    0,
+    Math.round((interviewMeta.endedAt.getTime() - interviewMeta.startedAt.getTime()) / 1000),
+  );
+
+  async function callOnce(retryNotice: boolean) {
+    const res = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 1200,
+      temperature: 0,
+      messages: [{ role: 'user', content: buildCommunicationAssessmentPrompt(transcript, retryNotice) }],
+    });
+    const content = res.content[0].type === 'text' ? res.content[0].text : '{}';
+    const cleaned = content.replace(/```json|```/g, '').trim();
+    return JSON.parse(cleaned); // throws on malformed JSON — caller retries once
+  }
+
+  let parsed: any;
+  try {
+    parsed = await callOnce(false);
+  } catch (firstErr) {
+    console.error('[ai.service] generateCommunicationAssessment malformed JSON, retrying once:', firstErr);
+    try {
+      parsed = await callOnce(true);
+    } catch (secondErr) {
+      console.error('[ai.service] generateCommunicationAssessment failed after retry:', secondErr);
+      return { ...communicationAssessmentFallback(), ...interviewMeta, durationSeconds };
+    }
+  }
+
+  const linguisticAccuracy = normalizeSubMetric(parsed.linguisticAccuracy);
+  const phoneticClarity = normalizeSubMetric(parsed.phoneticClarity);
+  const vocalProsody = normalizeSubMetric(parsed.vocalProsody);
+  const operationalFluency = normalizeSubMetric(parsed.operationalFluency);
+  const lexicalInteractiveIntelligence = normalizeSubMetric(parsed.lexicalInteractiveIntelligence);
+
+  const communicationScore = Math.round(
+    (linguisticAccuracy.score +
+      phoneticClarity.score +
+      vocalProsody.score +
+      operationalFluency.score +
+      lexicalInteractiveIntelligence.score) /
+      5,
+  );
+
+  return {
+    overallScore: communicationScore,
+    communicationScore,
+    communicationLevel: scoreToCefrBand(communicationScore),
+    summary: typeof parsed.summary === 'string' ? parsed.summary : 'Communication assessment unavailable.',
+    linguisticAccuracy,
+    phoneticClarity,
+    vocalProsody,
+    operationalFluency,
+    lexicalInteractiveIntelligence,
+    ...interviewMeta,
+    durationSeconds,
+  };
+}
+
 // ─── Candidate Chatbot ─────────────────────────────────────────────────────────
 
 export interface ChatMessage {

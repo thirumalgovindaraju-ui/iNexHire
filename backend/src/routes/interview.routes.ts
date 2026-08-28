@@ -7,6 +7,7 @@ import { validate } from '../middleware/validate';
 import { AppError } from '../middleware/errorHandler';
 import { enqueueEvaluation } from '../jobs/evaluation.job';
 import { broadcastProctoringEvent } from '../services/sseProctoring.service';
+import { runCommunicationAssessment } from './communicationAssessment.routes';
 
 const router = Router();
 
@@ -194,6 +195,12 @@ router.post('/:id/complete', async (req, res, next) => {
 
     // Kick off async evaluation
     await enqueueEvaluation(interview.id);
+
+    // Fire-and-forget — never let a slow/failed Claude call block or break the
+    // candidate-facing completion response.
+    runCommunicationAssessment(interview.id).catch((err) =>
+      console.error('[interview.routes] auto communication assessment failed:', err)
+    );
 
     res.json({ success: true, message: 'Interview submitted. Report will be ready shortly.' });
   } catch (err) {

@@ -7,6 +7,7 @@ import { reportsApi, extractError } from '../../services/api';
 import {
   Button, Card, StatusBadge, ScoreRing, Spinner, Badge, Select, useToast, PageHeader
 } from '../../components/ui';
+import CommunicationScorecard from '../../components/CommunicationScorecard';
 import type { Report } from '../../types';
 
 const SEVERITY_STYLE: Record<string, { emoji: string; className: string }> = {
@@ -256,6 +257,14 @@ export default function ReportDetail() {
                 ))}
               </div>
             </Card>
+          )}
+
+          {interviewId && (
+            <CommunicationScorecard
+              interviewId={interviewId}
+              candidateName={report.candidate?.name}
+              candidateEmail={report.candidate?.email}
+            />
           )}
         </div>
       </div>
