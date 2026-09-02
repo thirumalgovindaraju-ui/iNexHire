@@ -18,11 +18,14 @@ interface EditForm {
 
 function RolePlayerRow({ role }: { role?: TmRoleAssignment }) {
   if (!role) return null;
+  const isAgent = role.assigneeType === 'AI_AGENT';
   return (
     <p className="text-sm text-surface-800">
       <span className="font-semibold">{TM_ROLE_SHORT_LABELS[role.roleName] ?? role.roleName}</span>
       {' - '}
-      {role.member ? `TM ${role.member.name}` : <span className="text-surface-400 italic">Unassigned</span>}
+      {isAgent ? (
+        <span>🤖 AI Agent{role.agentStatus !== 'DONE' && <span className="text-surface-400"> (pending)</span>}</span>
+      ) : role.member ? role.member.name : <span className="text-surface-400 italic">Unassigned</span>}
     </p>
   );
 }
