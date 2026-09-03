@@ -1,10 +1,10 @@
 // src/pages/toastmasters/RoleAssignment.tsx — role assignment grid with auto-pair suggestion
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Sparkles } from 'lucide-react';
+import { Bot, Sparkles } from 'lucide-react';
 import { Button, PageHeader, Spinner, useToast } from '../../components/ui';
 import RoleCard from '../../components/toastmasters/RoleCard';
-import { TM_GOLD } from '../../components/toastmasters/theme';
+import { TM_GOLD, TM_NAVY } from '../../components/toastmasters/theme';
 import { extractError } from '../../services/api';
 import {
   TM_ROLE_ASSIGNMENT_ORDER, TM_ROLE_LABELS, membersApi, meetingsApi, rolesApi,
@@ -12,6 +12,16 @@ import {
 import type { TmMeeting, TmMember, TmRoleAssignment, UpdateRoleInput } from '../../services/toastmasters';
 
 interface Suggestion { forRoleId: string; evaluatorMember: TmMember }
+
+// Dependency order for running agents: speakers must produce a transcript before
+// their evaluator can run; evaluators must exist before Grammarian/General Evaluator
+// summarize across them. Procedural roles (no generated content) run last.
+const AGENT_RUN_ORDER = [
+  'SPEAKER_1', 'SPEAKER_2', 'SPEAKER_3',
+  'EVALUATOR_1', 'EVALUATOR_2', 'EVALUATOR_3',
+  'GRAMMARIAN', 'GENERAL_EVALUATOR', 'AH_COUNTER', 'TABLE_TOPICS_MASTER',
+  'TIMER', 'SAA', 'PO', 'TMOD', 'MENTOR',
+];
 
 export default function RoleAssignment() {
   const { id } = useParams<{ id: string }>();
@@ -22,28 +32,21 @@ export default function RoleAssignment() {
   const [roles, setRoles] = useState<TmRoleAssignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [suggestion, setSuggestion] = useState<Suggestion | null>(null);
+  const [bulkRunning, setBulkRunning] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number; roleName: string } | null>(null);
 
-  useEffect(() => {
-    if (!id) return;
-    Promise.all([meetingsApi.get(id), membersApi.list()])
+  function load() {
+    if (!id) return Promise.resolve();
+    return Promise.all([meetingsApi.get(id), membersApi.list()])
       .then(([m, mem]) => {
-        // TEMPORARY debug logging — remove once the empty-dropdown issue is confirmed fixed.
-        console.log('[RoleAssignment] GET /toastmasters/members raw response:', mem);
-        console.log('[RoleAssignment] members count:', mem.length);
         setMeeting(m);
         setMembers(mem);
         setRoles(m.roleAssignments ?? []);
       })
-      .catch((err) => {
-        console.error('[RoleAssignment] failed to load meeting/members:', err);
-        show(extractError(err), 'error');
-      })
-      .finally(() => setLoading(false));
-  }, [id]);
+      .catch((err) => show(extractError(err), 'error'));
+  }
 
-  useEffect(() => {
-    console.log('[RoleAssignment] members state after setMembers:', members, 'length:', members.length);
-  }, [members]);
+  useEffect(() => { load().finally(() => setLoading(false)); }, [id]);
 
   const ordered = TM_ROLE_ASSIGNMENT_ORDER
     .map((name) => roles.find((r) => r.roleName === name))
@@ -73,6 +76,35 @@ export default function RoleAssignment() {
     }
   }
 
+  const pendingAgentRoles = AGENT_RUN_ORDER
+    .map((name) => roles.find((r) => r.roleName === name))
+    .filter((r): r is TmRoleAssignment => !!r && r.assigneeType === 'AI_AGENT' && r.agentStatus !== 'DONE');
+
+  async function runAllAgents() {
+    setBulkRunning(true);
+    let succeeded = 0;
+    let failed = 0;
+    try {
+      for (let i = 0; i < pendingAgentRoles.length; i++) {
+        const role = pendingAgentRoles[i];
+        const label = TM_ROLE_LABELS[role.roleName] ?? role.roleName;
+        setBulkProgress({ done: i, total: pendingAgentRoles.length, roleName: label });
+        try {
+          const { role: updated } = await rolesApi.runAgent(role.id);
+          setRoles((prev) => prev.map((r) => (r.id === role.id ? updated : r)));
+          succeeded++;
+        } catch (err) {
+          failed++;
+          show(`${label} agent failed — ${extractError(err)}`, 'error');
+        }
+      }
+    } finally {
+      setBulkProgress(null);
+      setBulkRunning(false);
+    }
+    show(`Run All Agents finished — ${succeeded} completed${failed ? `, ${failed} failed` : ''}`, failed ? 'error' : 'success');
+  }
+
   async function applySuggestion() {
     if (!suggestion) return;
     const role = roles.find((r) => r.id === suggestion.forRoleId);
@@ -92,8 +124,26 @@ export default function RoleAssignment() {
       <PageHeader
         title={`Assign Roles — ${meeting.title}`}
         description={new Date(meeting.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-        action={<Button variant="secondary" onClick={() => navigate(`/toastmasters/${id}`)}>Back to Meeting</Button>}
+        action={
+          <div className="flex gap-2">
+            {pendingAgentRoles.length > 0 && (
+              <Button style={{ background: TM_NAVY }} loading={bulkRunning} onClick={runAllAgents}>
+                <Bot size={14} /> Run All Agents ({pendingAgentRoles.length})
+              </Button>
+            )}
+            <Button variant="secondary" onClick={() => navigate(`/toastmasters/${id}`)}>Back to Meeting</Button>
+          </div>
+        }
       />
+
+      {bulkProgress && (
+        <div className="mb-4 rounded-lg border border-brand-200 bg-brand-50 p-3 flex items-center gap-3">
+          <Spinner size={16} />
+          <p className="text-sm text-brand-900">
+            Running agents ({bulkProgress.done}/{bulkProgress.total}) — <strong>{bulkProgress.roleName}</strong> now…
+          </p>
+        </div>
+      )}
 
       <div className="mb-4">
         <div className="h-2 rounded-full bg-surface-100 overflow-hidden">
@@ -116,7 +166,14 @@ export default function RoleAssignment() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {ordered.map((role) => (
-          <RoleCard key={role.id} role={role} members={members} onSave={(patch) => handleSaveRole(role, patch)} />
+          <RoleCard
+            key={role.id}
+            role={role}
+            members={members}
+            excludeMemberIds={roles.filter((r) => r.id !== role.id && r.memberId).map((r) => r.memberId!)}
+            onSave={(patch) => handleSaveRole(role, patch)}
+            onAgentRun={load}
+          />
         ))}
       </div>
     </div>

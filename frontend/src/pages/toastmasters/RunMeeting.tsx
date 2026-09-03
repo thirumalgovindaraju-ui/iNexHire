@@ -6,6 +6,7 @@ import { Button, Select, Spinner, useToast } from '../../components/ui';
 import { TM_GOLD, TM_NAVY, TM_ZONE_COLOR, agendaZone, formatSecs } from '../../components/toastmasters/theme';
 import { findRoleForActivity } from '../../components/toastmasters/matchAgendaRole';
 import VoiceRecorder from '../../components/toastmasters/VoiceRecorder';
+import AgentRoleRunner from '../../components/toastmasters/AgentRoleRunner';
 import {
   TM_FILLER_COUNT_KEY, TM_FILLER_LABELS, TM_FILLER_WORDS, TM_ROLE_SHORT_LABELS,
   ahCounterApi, agendaApi, meetingsApi, membersApi, timerApi,
@@ -99,6 +100,13 @@ export default function RunMeeting() {
 
   function handleAnalysisComplete(memberId: string | undefined, analysis: TmSpeechAnalysis) {
     if (memberId) setAiFillerSuggestion({ memberId, analysis });
+  }
+
+  async function refreshAfterAgentRun() {
+    if (!id) return;
+    const [m, counters] = await Promise.all([meetingsApi.get(id), ahCounterApi.list(id)]);
+    setMeeting(m);
+    setAhCounters(counters);
   }
 
   async function applyAiFillerCounts() {
@@ -233,7 +241,18 @@ export default function RunMeeting() {
         </div>
       </div>
 
-      {effectiveRole && RECORDABLE_ROLES.has(effectiveRole.roleName) && (
+      {effectiveRole && effectiveRole.assigneeType === 'AI_AGENT' && (
+        <div className="mt-5">
+          <AgentRoleRunner
+            key={effectiveRole.id}
+            role={effectiveRole}
+            roleLabel={TM_ROLE_SHORT_LABELS[effectiveRole.roleName] ?? effectiveRole.roleName}
+            onRoleUpdate={refreshAfterAgentRun}
+          />
+        </div>
+      )}
+
+      {effectiveRole && effectiveRole.assigneeType !== 'AI_AGENT' && RECORDABLE_ROLES.has(effectiveRole.roleName) && (
         <div className="mt-5">
           <VoiceRecorder
             key={effectiveRole.id}

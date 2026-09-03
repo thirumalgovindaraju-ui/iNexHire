@@ -754,6 +754,11 @@ model TmMeeting {
   venue          String?
   status         String   @default("PLANNED") // PLANNED | IN_PROGRESS | COMPLETED | CANCELLED
 
+  // Running totals across every "Run Agent" call for this meeting (claude-sonnet-4-6 usage).
+  agentInputTokens  Int   @default(0)
+  agentOutputTokens Int   @default(0)
+  agentCostUsd      Float @default(0)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -806,6 +811,11 @@ model TmRoleAssignment {
   greenMins       Int?
   yellowMins      Int?
   redMins         Int?
+
+  assigneeType String    @default("HUMAN") // HUMAN | AI_AGENT
+  agentStatus  String? // PENDING | RUNNING | DONE | FAILED
+  agentOutput  Json? // freeform result for roles with no dedicated table (table topics, procedural roles)
+  agentRunAt   DateTime?
 
   createdAt DateTime @default(now())
 
@@ -883,6 +893,7 @@ model TmGrammarianLog {
   incorrectUses       Int     @default(0)
   goodGrammarExamples String? @db.Text
   errorsNoted         String? @db.Text
+  generatedByAgent    Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -907,6 +918,7 @@ model TmEvaluation {
   bodyFeedback       String? @db.Text // was the body clearly structured?
   conclusionFeedback String? @db.Text // was the conclusion memorable?
   status             String  @default("DRAFT") // DRAFT | SUBMITTED
+  generatedByAgent   Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -929,6 +941,7 @@ model TmGeneralEvaluation {
   evaluatorFeedback Json?    // [{ evaluatorRoleId, feedback }]
   bestSpeakerRoleId String?
   status            String   @default("DRAFT") // DRAFT | SUBMITTED
+  generatedByAgent  Boolean  @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -997,6 +1010,7 @@ model TmSpeechAnalysis {
   conclusionFeedback String?  @db.Text
   wordOfDayUsed      Boolean  @default(false)
   summary            String?  @db.Text
+  generatedByAgent   Boolean  @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

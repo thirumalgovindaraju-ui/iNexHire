@@ -1,5 +1,5 @@
 // src/components/toastmasters/MeetingReport.tsx — full 9-section printable meeting report
-import { Award, ArrowRight, Sparkles } from 'lucide-react';
+import { Award, ArrowRight, Bot, Sparkles } from 'lucide-react';
 import { Badge, Select } from '../ui';
 import MeetingHeaderCard from './MeetingHeaderCard';
 import { formatSecs } from './theme';
@@ -40,11 +40,16 @@ export default function MeetingReport({ report, nextMeeting, awards, onAwardsCha
       {/* 1. Meeting Summary */}
       <section>
         <h2 className="font-semibold text-surface-900 mb-2">Meeting Summary</h2>
-        <div className="grid grid-cols-4 gap-2 text-sm">
+        <div className="grid grid-cols-5 gap-2 text-sm">
           <div className="rounded-lg border border-surface-200 bg-white p-2.5"><p className="text-xs text-surface-500">Meeting No.</p><p className="font-semibold">{report.meetingNumber ?? '—'}</p></div>
           <div className="rounded-lg border border-surface-200 bg-white p-2.5"><p className="text-xs text-surface-500">Attendance</p><p className="font-semibold">{memberCount + guestCount}</p></div>
           <div className="rounded-lg border border-surface-200 bg-white p-2.5"><p className="text-xs text-surface-500">Members : Guests</p><p className="font-semibold">{memberCount} : {guestCount}</p></div>
           <div className="rounded-lg border border-surface-200 bg-white p-2.5"><p className="text-xs text-surface-500">Venue</p><p className="font-semibold">{report.venue ?? '—'}</p></div>
+          <div className="rounded-lg border border-brand-100 bg-brand-50 p-2.5">
+            <p className="text-xs text-surface-500 flex items-center gap-1"><Bot size={11} /> AI Agent Usage</p>
+            <p className="font-semibold">{((report.agentInputTokens ?? 0) + (report.agentOutputTokens ?? 0)).toLocaleString()} tok</p>
+            <p className="text-xs text-surface-500">${(report.agentCostUsd ?? 0).toFixed(4)}</p>
+          </div>
         </div>
       </section>
 
@@ -55,7 +60,9 @@ export default function MeetingReport({ report, nextMeeting, awards, onAwardsCha
           {report.roleAssignments?.map((r) => (
             <div key={r.id} className="rounded-lg border border-surface-200 bg-white p-2.5 text-sm">
               <p className="text-xs text-surface-500">{TM_ROLE_LABELS[r.roleName] ?? r.roleName}</p>
-              <p className="font-medium text-surface-900">{r.member?.name ?? '—'}</p>
+              <p className="font-medium text-surface-900">
+                {r.assigneeType === 'AI_AGENT' ? '🤖 AI Agent' : r.member?.name ?? '—'}
+              </p>
             </div>
           ))}
         </div>
@@ -103,10 +110,20 @@ export default function MeetingReport({ report, nextMeeting, awards, onAwardsCha
               return (
                 <div key={e.id} className="rounded-lg border border-surface-200 bg-white p-3 text-sm">
                   <div className="flex items-center justify-between">
-                    <p className="font-medium">{e.speaker?.speechTitle ?? 'Untitled'} <span className="text-surface-400">— {e.speaker?.member?.name ?? 'Unassigned'}</span></p>
-                    {analysis && <Badge variant="purple" className="flex items-center gap-1"><Sparkles size={10} /> AI Analyzed</Badge>}
+                    <p className="font-medium">
+                      {e.speaker?.speechTitle ?? 'Untitled'}{' '}
+                      <span className="text-surface-400">
+                        — {e.speaker?.assigneeType === 'AI_AGENT' ? '🤖 AI Agent' : e.speaker?.member?.name ?? 'Unassigned'}
+                      </span>
+                    </p>
+                    <div className="flex items-center gap-1.5">
+                      {e.generatedByAgent && <Badge variant="blue" className="flex items-center gap-1"><Bot size={10} /> Agent Evaluated</Badge>}
+                      {analysis && <Badge variant="purple" className="flex items-center gap-1"><Sparkles size={10} /> AI Analyzed</Badge>}
+                    </div>
                   </div>
-                  <p className="text-surface-500 text-xs">Project: {e.speaker?.pathwaysProject ?? '—'} · Evaluator: {e.evaluator?.member?.name ?? 'Unassigned'}</p>
+                  <p className="text-surface-500 text-xs">
+                    Project: {e.speaker?.pathwaysProject ?? '—'} · Evaluator: {e.evaluator?.assigneeType === 'AI_AGENT' ? '🤖 AI Agent' : e.evaluator?.member?.name ?? 'Unassigned'}
+                  </p>
                   <p className="text-surface-500 text-xs mt-1">Content {e.ratingContent ?? '—'} · Delivery {e.ratingDelivery ?? '—'} · Language {e.ratingLanguage ?? '—'} · Overall {e.overallRating ?? '—'}</p>
                   {e.commendations && <p className="mt-1"><span className="text-green-600 font-medium">Well: </span>{e.commendations}</p>}
                   {e.recommendations && <p><span className="text-amber-600 font-medium">Improve: </span>{e.recommendations}</p>}
@@ -188,7 +205,9 @@ export default function MeetingReport({ report, nextMeeting, awards, onAwardsCha
       {/* 7. Grammarian Report */}
       {report.grammarianLog && (
         <section>
-          <h2 className="font-semibold text-surface-900 mb-2">Grammarian Report</h2>
+          <h2 className="font-semibold text-surface-900 mb-2 flex items-center gap-2">
+            Grammarian Report {report.grammarianLog.generatedByAgent && <Badge variant="blue" className="flex items-center gap-1"><Bot size={10} /> AI Agent</Badge>}
+          </h2>
           <div className="rounded-lg border border-surface-200 bg-white p-3 text-sm">
             <p><span className="text-surface-500">Word of the day:</span> {report.grammarianLog.wordOfDay ?? '—'}</p>
             <p><span className="text-surface-500">Correct / Incorrect uses:</span> {report.grammarianLog.correctUses} / {report.grammarianLog.incorrectUses}</p>

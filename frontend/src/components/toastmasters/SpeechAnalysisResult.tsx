@@ -4,6 +4,7 @@ import { Badge, Button, useToast } from '../ui';
 import { highlightFillerWords } from './highlightFillers';
 import { TM_FILLER_LABELS, TM_FILLER_WORDS } from '../../services/toastmasters';
 import type { TmSpeechAnalysis } from '../../services/toastmasters';
+import { SpeakButton } from './agentSpeech';
 
 function scoreColor(score: number, max: number) {
   const pct = score / max;
@@ -144,6 +145,10 @@ export default function SpeechAnalysisResult({ analysis, onRecordAgain }: {
       )}
 
       <div className="rounded-lg border border-surface-200 bg-white p-3 max-h-40 overflow-y-auto text-sm leading-relaxed">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-semibold uppercase text-surface-500">Transcript</p>
+          <SpeakButton text={analysis.transcript} label="Listen to speech" />
+        </div>
         {highlightFillerWords(analysis.transcript)}
       </div>
 

@@ -8,6 +8,17 @@ const openai = new OpenAI({ apiKey: env.openaiApiKey });
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const CLAUDE_MODEL = 'claude-sonnet-4-6';
 
+// claude-sonnet-4-6 pricing: $3.00 / 1M input tokens, $15.00 / 1M output tokens.
+const CLAUDE_PRICE_PER_INPUT_TOKEN = 3 / 1_000_000;
+const CLAUDE_PRICE_PER_OUTPUT_TOKEN = 15 / 1_000_000;
+
+export interface AgentUsage { inputTokens: number; outputTokens: number }
+const ZERO_USAGE: AgentUsage = { inputTokens: 0, outputTokens: 0 };
+
+export function computeAgentCostUsd(usage: AgentUsage): number {
+  return usage.inputTokens * CLAUDE_PRICE_PER_INPUT_TOKEN + usage.outputTokens * CLAUDE_PRICE_PER_OUTPUT_TOKEN;
+}
+
 // ─── Generate Job Description ─────────────────────────────────────────────────
 
 export async function generateJobDescription(params: {
@@ -1754,6 +1765,7 @@ export interface SpeechAnalysisResult {
   };
   wordOfDayUsed: boolean;
   summary: string;
+  usage: AgentUsage;
 }
 
 const EMPTY_FILLER_WORD_COUNTS: SpeechFillerWordCounts = {
@@ -1835,6 +1847,7 @@ Be specific — reference actual phrases from the transcript wherever you give f
       },
       wordOfDayUsed: parsed.wordOfDayUsed ?? false,
       summary: parsed.summary ?? 'Speech analysis unavailable.',
+      usage: { inputTokens: res.usage.input_tokens, outputTokens: res.usage.output_tokens },
     };
   } catch (err) {
     console.error('[ai.service] analyzeSpeech failed:', err);
@@ -1848,6 +1861,222 @@ Be specific — reference actual phrases from the transcript wherever you give f
       },
       wordOfDayUsed: false,
       summary: 'Speech analysis unavailable.',
+      usage: ZERO_USAGE,
     };
+  }
+}
+
+// ─── Toastmasters: AI Agent role-fulfillment ──────────────────────────────────
+// When a meeting role is assigned to "AI Agent" instead of a human member, these
+// functions generate the content that role would normally produce, so the agent's
+// work shows up in the same tables/report a human's work would. Same defensive
+// pattern as analyzeSpeech(): strip markdown fences, parse defensively, typed
+// fallback, never throw raw.
+
+export async function generateAgentSpeech(params: {
+  roleName: string;
+  speechTitle?: string;
+  pathwaysProject?: string;
+  manualNumber?: string;
+  wordOfDay?: string;
+  theme?: string;
+}): Promise<{ title: string; transcript: string; usage: AgentUsage }> {
+  const prompt = `You are an experienced Toastmasters club member preparing to deliver a prepared speech at a club meeting.
+
+${params.speechTitle ? `The speech title is: "${params.speechTitle}"` : 'No title has been set yet — invent a fitting one.'}
+${params.pathwaysProject ? `Pathways project: ${params.pathwaysProject}` : ''}
+${params.manualNumber ? `Manual project number: ${params.manualNumber}` : ''}
+${params.theme ? `Meeting theme: ${params.theme}` : ''}
+${params.wordOfDay ? `Try to naturally use the meeting's Word of the Day at least once: "${params.wordOfDay}"` : ''}
+
+Write a full ~5-7 minute Toastmasters speech transcript (roughly 700-950 words) as if being spoken aloud — first person,
+natural spoken cadence, a clear opening hook, a structured body (2-3 points or a short story arc), and a memorable
+conclusion. This is the literal transcript, not an outline or stage directions.
+
+Return ONLY valid JSON in this exact shape, no other text:
+{ "title": "<the speech title, either the one given above or your invented one>", "transcript": "<the full speech text>" }`;
+
+  try {
+    const res = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 2000,
+      temperature: 0.8,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const text = res.content[0].type === 'text' ? res.content[0].text : '{}';
+    const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
+    return {
+      title: parsed.title || params.speechTitle || 'Untitled Speech',
+      transcript: parsed.transcript || '',
+      usage: { inputTokens: res.usage.input_tokens, outputTokens: res.usage.output_tokens },
+    };
+  } catch (err) {
+    console.error('[ai.service] generateAgentSpeech failed:', err);
+    return { title: params.speechTitle || 'Untitled Speech', transcript: '', usage: ZERO_USAGE };
+  }
+}
+
+export async function generateAgentEvaluation(params: {
+  speechTranscript: string;
+  speechTitle?: string;
+  wordOfDay?: string;
+}): Promise<{
+  commendations: string; recommendations: string;
+  ratingContent: number; ratingDelivery: number; ratingLanguage: number; overallRating: number;
+  openingFeedback: string; bodyFeedback: string; conclusionFeedback: string;
+  usage: AgentUsage;
+}> {
+  const prompt = `You are an experienced Toastmasters evaluator giving a verbal evaluation of a fellow member's prepared speech.
+
+${params.speechTitle ? `Speech title: "${params.speechTitle}"` : ''}
+${params.wordOfDay ? `Word of the Day: "${params.wordOfDay}"` : ''}
+
+TRANSCRIPT:
+"""
+${params.speechTranscript.slice(0, 6000)}
+"""
+
+Evaluate this speech and return ONLY valid JSON in this exact shape, no other text:
+{
+  "commendations": "<2-4 sentences on what went well, referencing actual phrases from the transcript>",
+  "recommendations": "<2-4 sentences of specific, actionable improvement advice>",
+  "ratingContent": <1-5 int>, "ratingDelivery": <1-5 int>, "ratingLanguage": <1-5 int>, "overallRating": <1-5 int>,
+  "openingFeedback": "<was the opening attention-grabbing?>",
+  "bodyFeedback": "<was the body clearly structured?>",
+  "conclusionFeedback": "<was the conclusion memorable?>"
+}
+Be specific and encouraging, in the warm-but-honest tone of a real Toastmasters evaluator.`;
+
+  try {
+    const res = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 1200,
+      temperature: 0.5,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const text = res.content[0].type === 'text' ? res.content[0].text : '{}';
+    const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
+    return {
+      commendations: parsed.commendations ?? '',
+      recommendations: parsed.recommendations ?? '',
+      ratingContent: parsed.ratingContent ?? 3,
+      ratingDelivery: parsed.ratingDelivery ?? 3,
+      ratingLanguage: parsed.ratingLanguage ?? 3,
+      overallRating: parsed.overallRating ?? 3,
+      openingFeedback: parsed.openingFeedback ?? '',
+      bodyFeedback: parsed.bodyFeedback ?? '',
+      conclusionFeedback: parsed.conclusionFeedback ?? '',
+      usage: { inputTokens: res.usage.input_tokens, outputTokens: res.usage.output_tokens },
+    };
+  } catch (err) {
+    console.error('[ai.service] generateAgentEvaluation failed:', err);
+    return {
+      commendations: '', recommendations: '',
+      ratingContent: 0, ratingDelivery: 0, ratingLanguage: 0, overallRating: 0,
+      openingFeedback: '', bodyFeedback: '', conclusionFeedback: '',
+      usage: ZERO_USAGE,
+    };
+  }
+}
+
+export async function generateAgentGeneralEvaluation(params: {
+  meetingTitle: string;
+  theme?: string;
+  evaluations: { speakerName: string; speechTitle?: string; overallRating?: number }[];
+}): Promise<{ overallFeedback: string; evaluatorFeedback: { evaluatorRoleId: string; feedback: string }[]; usage: AgentUsage }> {
+  const prompt = `You are the General Evaluator giving the closing meeting-wide evaluation at a Toastmasters club meeting.
+
+Meeting: "${params.meetingTitle}"${params.theme ? ` (theme: ${params.theme})` : ''}
+
+Speakers evaluated this meeting:
+${params.evaluations.map((e) => `- ${e.speakerName}${e.speechTitle ? ` — "${e.speechTitle}"` : ''}${e.overallRating ? ` (rated ${e.overallRating}/5)` : ''}`).join('\n') || '(none)'}
+
+Return ONLY valid JSON in this exact shape, no other text:
+{ "overallFeedback": "<3-5 sentence overall meeting critique covering pacing, energy, and general club practice>" }`;
+
+  try {
+    const res = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 800,
+      temperature: 0.6,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const text = res.content[0].type === 'text' ? res.content[0].text : '{}';
+    const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
+    return {
+      overallFeedback: parsed.overallFeedback ?? '', evaluatorFeedback: [],
+      usage: { inputTokens: res.usage.input_tokens, outputTokens: res.usage.output_tokens },
+    };
+  } catch (err) {
+    console.error('[ai.service] generateAgentGeneralEvaluation failed:', err);
+    return { overallFeedback: 'General evaluation unavailable.', evaluatorFeedback: [], usage: ZERO_USAGE };
+  }
+}
+
+export async function generateAgentGrammarianReport(params: {
+  wordOfDay?: string;
+  transcripts: { speakerName: string; transcript: string }[];
+}): Promise<{ correctUses: number; incorrectUses: number; goodGrammarExamples: string; errorsNoted: string; usage: AgentUsage }> {
+  const prompt = `You are the Grammarian at a Toastmasters club meeting, tracking Word of the Day usage and grammar across all speeches.
+
+${params.wordOfDay ? `Word of the Day: "${params.wordOfDay}"` : 'No word of the day was set.'}
+
+SPEECHES:
+${params.transcripts.map((t) => `--- ${t.speakerName} ---\n${t.transcript.slice(0, 3000)}`).join('\n\n')}
+
+Return ONLY valid JSON in this exact shape, no other text:
+{
+  "correctUses": <count of correct Word of the Day usages across all speeches>,
+  "incorrectUses": <count of grammar errors noticed across all speeches>,
+  "goodGrammarExamples": "<1-3 sentences citing specific well-phrased moments, with speaker names>",
+  "errorsNoted": "<1-3 sentences citing specific grammar issues, with speaker names>"
+}`;
+
+  try {
+    const res = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 800,
+      temperature: 0.3,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const text = res.content[0].type === 'text' ? res.content[0].text : '{}';
+    const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
+    return {
+      correctUses: parsed.correctUses ?? 0,
+      incorrectUses: parsed.incorrectUses ?? 0,
+      goodGrammarExamples: parsed.goodGrammarExamples ?? '',
+      errorsNoted: parsed.errorsNoted ?? '',
+      usage: { inputTokens: res.usage.input_tokens, outputTokens: res.usage.output_tokens },
+    };
+  } catch (err) {
+    console.error('[ai.service] generateAgentGrammarianReport failed:', err);
+    return { correctUses: 0, incorrectUses: 0, goodGrammarExamples: '', errorsNoted: 'Grammarian report unavailable.', usage: ZERO_USAGE };
+  }
+}
+
+export async function generateAgentTableTopics(params: { theme?: string; wordOfDay?: string }): Promise<{ topics: string[]; usage: AgentUsage }> {
+  const prompt = `You are the Table Topics Master preparing impromptu speaking questions for a Toastmasters club meeting.
+${params.theme ? `Meeting theme: ${params.theme}` : ''}
+${params.wordOfDay ? `Try to relate at least one question to the Word of the Day: "${params.wordOfDay}"` : ''}
+
+Return ONLY valid JSON in this exact shape, no other text:
+{ "topics": ["<question 1>", "<question 2>", "...5-8 short, thought-provoking 1-2 minute impromptu speaking questions"] }`;
+
+  try {
+    const res = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 600,
+      temperature: 0.9,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const text = res.content[0].type === 'text' ? res.content[0].text : '{}';
+    const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
+    return {
+      topics: Array.isArray(parsed.topics) ? parsed.topics : [],
+      usage: { inputTokens: res.usage.input_tokens, outputTokens: res.usage.output_tokens },
+    };
+  } catch (err) {
+    console.error('[ai.service] generateAgentTableTopics failed:', err);
+    return { topics: [], usage: ZERO_USAGE };
   }
 }

@@ -3,6 +3,7 @@ import { Router } from 'express';
 import meetingsRoutes from './meetings.routes';
 import membersRoutes from './members.routes';
 import rolesRoutes from './roles.routes';
+import agentRoutes from './agent.routes';
 import agendaRoutes from './agenda.routes';
 import educationRoutes from './education.routes';
 import evaluationsRoutes from './evaluations.routes';
@@ -18,6 +19,7 @@ const router = Router();
 
 router.use(membersRoutes);
 router.use(rolesRoutes);
+router.use(agentRoutes);
 router.use(agendaRoutes);
 router.use(educationRoutes);
 router.use(evaluationsRoutes);

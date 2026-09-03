@@ -89,6 +89,9 @@ export interface TmMember {
   active: boolean;
 }
 
+export type TmAssigneeType = 'HUMAN' | 'AI_AGENT';
+export type TmAgentStatus = 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED';
+
 export interface TmRoleAssignment {
   id: string;
   meetingId: string;
@@ -102,6 +105,10 @@ export interface TmRoleAssignment {
   greenMins?: number | null;
   yellowMins?: number | null;
   redMins?: number | null;
+  assigneeType: TmAssigneeType;
+  agentStatus?: TmAgentStatus | null;
+  agentOutput?: { note?: string; topics?: string[] } | null;
+  agentRunAt?: string | null;
 }
 
 export interface TmAgendaItem {
@@ -145,6 +152,7 @@ export interface TmEvaluation {
   bodyFeedback?: string | null;
   conclusionFeedback?: string | null;
   status: 'DRAFT' | 'SUBMITTED';
+  generatedByAgent?: boolean;
 }
 
 export interface TmGeneralEvaluation {
@@ -154,6 +162,7 @@ export interface TmGeneralEvaluation {
   evaluatorFeedback?: { evaluatorRoleId: string; feedback: string }[] | null;
   bestSpeakerRoleId?: string | null;
   status: 'DRAFT' | 'SUBMITTED';
+  generatedByAgent?: boolean;
 }
 
 export interface TmTimerLog {
@@ -188,6 +197,7 @@ export interface TmGrammarianLog {
   incorrectUses: number;
   goodGrammarExamples?: string | null;
   errorsNoted?: string | null;
+  generatedByAgent?: boolean;
 }
 
 export interface TmTableTopicResponse {
@@ -232,6 +242,7 @@ export interface TmSpeechAnalysis {
   conclusionFeedback?: string | null;
   wordOfDayUsed: boolean;
   summary?: string | null;
+  generatedByAgent?: boolean;
 }
 
 export interface TmMeeting {
@@ -253,6 +264,9 @@ export interface TmMeeting {
   educationSessions?: TmEducationSession[];
   evaluations?: TmEvaluation[];
   grammarianLog?: TmGrammarianLog | null;
+  agentInputTokens?: number;
+  agentOutputTokens?: number;
+  agentCostUsd?: number;
   _count?: { evaluations: number };
   roleCount?: { filled: number; total: number };
 }
