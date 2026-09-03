@@ -8,9 +8,18 @@ const openai = new OpenAI({ apiKey: env.openaiApiKey });
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const CLAUDE_MODEL = 'claude-sonnet-4-6';
 
-// claude-sonnet-4-6 pricing: $3.00 / 1M input tokens, $15.00 / 1M output tokens.
-const CLAUDE_PRICE_PER_INPUT_TOKEN = 3 / 1_000_000;
-const CLAUDE_PRICE_PER_OUTPUT_TOKEN = 15 / 1_000_000;
+// Toastmasters "Run Agent" calls use Haiku instead of Sonnet — Render's free-tier
+// request timeout (60s) doesn't leave enough headroom for Sonnet's latency, and
+// Haiku is fast enough to reliably finish these short, structured JSON generations
+// in time. Keep this separate from CLAUDE_MODEL, which stays Sonnet for every
+// other (non agent-run) function in this file per the project's AI conventions.
+const AGENT_MODEL = 'claude-haiku-4-5';
+
+// claude-haiku-4-5 pricing: $1.00 / 1M input tokens, $5.00 / 1M output tokens.
+// (computeAgentCostUsd is only ever called for agent-run usage, so it tracks
+// AGENT_MODEL's price, not CLAUDE_MODEL's.)
+const CLAUDE_PRICE_PER_INPUT_TOKEN = 1 / 1_000_000;
+const CLAUDE_PRICE_PER_OUTPUT_TOKEN = 5 / 1_000_000;
 
 export interface AgentUsage { inputTokens: number; outputTokens: number }
 const ZERO_USAGE: AgentUsage = { inputTokens: 0, outputTokens: 0 };
@@ -1819,7 +1828,7 @@ Be specific — reference actual phrases from the transcript wherever you give f
 
   try {
     const res = await anthropic.messages.create({
-      model: CLAUDE_MODEL,
+      model: AGENT_MODEL,
       max_tokens: 2000,
       temperature: 0,
       messages: [{ role: 'user', content: prompt }],
@@ -1898,7 +1907,7 @@ Return ONLY valid JSON in this exact shape, no other text:
 
   try {
     const res = await anthropic.messages.create({
-      model: CLAUDE_MODEL,
+      model: AGENT_MODEL,
       max_tokens: 2000,
       temperature: 0.8,
       messages: [{ role: 'user', content: prompt }],
@@ -1949,8 +1958,8 @@ Be specific and encouraging, in the warm-but-honest tone of a real Toastmasters 
 
   try {
     const res = await anthropic.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: 1200,
+      model: AGENT_MODEL,
+      max_tokens: 600,
       temperature: 0.5,
       messages: [{ role: 'user', content: prompt }],
     });
@@ -1996,8 +2005,8 @@ Return ONLY valid JSON in this exact shape, no other text:
 
   try {
     const res = await anthropic.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: 800,
+      model: AGENT_MODEL,
+      max_tokens: 300,
       temperature: 0.6,
       messages: [{ role: 'user', content: prompt }],
     });
@@ -2034,8 +2043,8 @@ Return ONLY valid JSON in this exact shape, no other text:
 
   try {
     const res = await anthropic.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: 800,
+      model: AGENT_MODEL,
+      max_tokens: 300,
       temperature: 0.3,
       messages: [{ role: 'user', content: prompt }],
     });
@@ -2064,8 +2073,8 @@ Return ONLY valid JSON in this exact shape, no other text:
 
   try {
     const res = await anthropic.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: 600,
+      model: AGENT_MODEL,
+      max_tokens: 300,
       temperature: 0.9,
       messages: [{ role: 'user', content: prompt }],
     });
