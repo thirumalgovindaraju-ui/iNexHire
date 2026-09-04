@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
 
-const canSpeak = typeof window !== 'undefined' && 'speechSynthesis' in window;
+export const canSpeak = typeof window !== 'undefined' && 'speechSynthesis' in window;
 
 /** Extracts the full (untruncated) text worth reading aloud from an agent result payload. */
 export function agentResultSpeechText(result: unknown): string | null {
@@ -25,9 +25,14 @@ export function agentResultSpeechText(result: unknown): string | null {
   return null;
 }
 
-export function SpeakButton({ text, label = 'Listen', className = '', onSpeakingChange }: {
-  text: string; label?: string; className?: string; onSpeakingChange?: (speaking: boolean) => void;
-}) {
+/**
+ * Shared SpeechSynthesis playback state, usable both from a manual "Listen" button
+ * click and programmatically (e.g. auto-playing right after an agent run completes,
+ * or driving an unattended "run the whole show" sequence). Only one hook instance
+ * should be actively speaking at a time — callers share the browser's single
+ * speechSynthesis queue, and `play()` always cancels whatever was speaking before.
+ */
+export function useSpeech(onSpeakingChange?: (speaking: boolean) => void) {
   const [speaking, setSpeaking] = useState(false);
 
   function setSpeakingState(value: boolean) {
@@ -38,18 +43,11 @@ export function SpeakButton({ text, label = 'Listen', className = '', onSpeaking
   // Stop speaking if this card unmounts (e.g. navigating away mid-speech).
   useEffect(() => () => {
     if (canSpeak) window.speechSynthesis.cancel();
-    onSpeakingChange?.(false);
   }, []);
 
-  if (!canSpeak || !text.trim()) return null;
-
-  function toggle() {
-    if (speaking) {
-      window.speechSynthesis.cancel();
-      setSpeakingState(false);
-      return;
-    }
-    window.speechSynthesis.cancel(); // only one agent should speak at a time
+  function play(text: string) {
+    if (!canSpeak || !text.trim()) return;
+    window.speechSynthesis.cancel(); // only one voice should speak at a time
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.onend = () => setSpeakingState(false);
     utterance.onerror = () => setSpeakingState(false);
@@ -57,10 +55,23 @@ export function SpeakButton({ text, label = 'Listen', className = '', onSpeaking
     setSpeakingState(true);
   }
 
+  function stop() {
+    window.speechSynthesis.cancel();
+    setSpeakingState(false);
+  }
+
+  return { speaking, play, stop };
+}
+
+export function SpeakButton({ speaking, onToggle, label = 'Listen', className = '' }: {
+  speaking: boolean; onToggle: () => void; label?: string; className?: string;
+}) {
+  if (!canSpeak) return null;
+
   return (
     <button
       type="button"
-      onClick={toggle}
+      onClick={onToggle}
       className={`inline-flex items-center gap-1 text-xs font-semibold text-brand-700 hover:text-brand-900 ${className}`}
     >
       {speaking ? <VolumeX size={13} /> : <Volume2 size={13} />} {speaking ? 'Stop' : label}

@@ -1,7 +1,7 @@
 // src/pages/toastmasters/RunMeeting.tsx — live meeting runner
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, Check, ChevronLeft, ChevronRight, Pause, Play, RotateCcw, SquareCheck } from 'lucide-react';
+import { AlertTriangle, Check, ChevronLeft, ChevronRight, Pause, Play, RotateCcw, SquareCheck, Sparkles } from 'lucide-react';
 import { Button, Select, Spinner, useToast } from '../../components/ui';
 import { TM_GOLD, TM_NAVY, TM_ZONE_COLOR, agendaZone, formatSecs } from '../../components/toastmasters/theme';
 import { findRoleForActivity } from '../../components/toastmasters/matchAgendaRole';
@@ -32,6 +32,7 @@ export default function RunMeeting() {
   const [running, setRunning] = useState(false);
   const [speakerId, setSpeakerId] = useState<string>('');
   const [speakingRoleId, setSpeakingRoleId] = useState<string | null>(null);
+  const [autoPlayShow, setAutoPlayShow] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -60,6 +61,14 @@ export default function RunMeeting() {
     setSpeakerId(role?.member?.id ?? '');
     setAiFillerSuggestion(null);
   }, [currentIndex, current?.id]);
+
+  // Auto-Play Show: start the on-screen timer for whichever AI-agent item we land
+  // on (or the one already showing when the toggle is switched on), so the timer
+  // log AgentRoleRunner's onAutoAdvance eventually submits reflects real elapsed time.
+  useEffect(() => {
+    const role = current?.roleAssignment ?? (current && meeting ? findRoleForActivity(current.activityName, meeting.roleAssignments ?? []) : undefined);
+    if (autoPlayShow && role?.assigneeType === 'AI_AGENT') setRunning(true);
+  }, [currentIndex, autoPlayShow, current?.id, meeting]);
 
   if (loading) return <div className="flex justify-center py-20"><Spinner size={28} /></div>;
   if (!meeting) return <p className="p-6 text-surface-500">Meeting not found.</p>;
@@ -104,6 +113,18 @@ export default function RunMeeting() {
     if (memberId) setAiFillerSuggestion({ memberId, analysis });
   }
 
+  // Called by AgentRoleRunner once an AI-agent role's turn is genuinely over — its
+  // speech finished, it had nothing to say, or it failed — so the unattended show
+  // proceeds exactly like a human clicking "Done" would, then moves on.
+  function handleAutoAdvance() {
+    if (!autoPlayShow) return;
+    const isLast = currentIndex >= items.length - 1;
+    setTimeout(() => {
+      markDone();
+      if (isLast) setAutoPlayShow(false);
+    }, 700);
+  }
+
   async function refreshAfterAgentRun() {
     if (!id) return;
     const [m, counters] = await Promise.all([meetingsApi.get(id), ahCounterApi.list(id)]);
@@ -129,6 +150,8 @@ export default function RunMeeting() {
 
   const speakerCounter = ahCounters.find((c) => c.memberId === speakerId);
 
+  const waitingForHuman = autoPlayShow && effectiveRole && effectiveRole.assigneeType !== 'AI_AGENT';
+
   return (
     <div className="p-6 max-w-6xl mx-auto">
       <MeetingCallGrid
@@ -136,6 +159,22 @@ export default function RunMeeting() {
         activeRoleId={effectiveRole?.id}
         speakingRoleId={speakingRoleId}
       />
+
+      <div className="flex items-center justify-between mb-4">
+        <Button
+          size="sm"
+          style={autoPlayShow ? { background: TM_NAVY } : undefined}
+          variant={autoPlayShow ? undefined : 'secondary'}
+          onClick={() => setAutoPlayShow((v) => !v)}
+        >
+          <Sparkles size={13} /> {autoPlayShow ? 'Stop Auto-Play Show' : 'Auto-Play Show'}
+        </Button>
+        {waitingForHuman && (
+          <span className="text-xs font-medium text-amber-600">
+            Paused on a human-assigned role — click Done/Next to continue.
+          </span>
+        )}
+      </div>
 
       <div className="mb-4">
         <div className="h-2 rounded-full bg-surface-100 overflow-hidden">
@@ -257,6 +296,8 @@ export default function RunMeeting() {
             roleLabel={TM_ROLE_SHORT_LABELS[effectiveRole.roleName] ?? effectiveRole.roleName}
             onRoleUpdate={refreshAfterAgentRun}
             onSpeakingChange={(speaking) => setSpeakingRoleId(speaking ? effectiveRole.id : null)}
+            autoRun={autoPlayShow}
+            onAutoAdvance={handleAutoAdvance}
           />
         </div>
       )}

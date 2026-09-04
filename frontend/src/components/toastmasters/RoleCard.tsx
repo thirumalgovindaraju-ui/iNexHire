@@ -7,7 +7,7 @@ import { extractError } from '../../services/api';
 import { TM_NAVY } from './theme';
 import { TM_ROLE_LABELS, TM_SPEAKER_EVALUATOR_PAIRS, rolesApi } from '../../services/toastmasters';
 import type { TmAssigneeType, TmMember, TmRoleAssignment, UpdateRoleInput } from '../../services/toastmasters';
-import { agentResultSpeechText, SpeakButton } from './agentSpeech';
+import { agentResultSpeechText, SpeakButton, useSpeech } from './agentSpeech';
 import { TalkingAvatar } from './TalkingAvatar';
 
 const SPEAKER_ROLES = new Set(TM_SPEAKER_EVALUATOR_PAIRS.map(([s]) => s));
@@ -50,7 +50,7 @@ export default function RoleCard({ role, members, excludeMemberIds, onSave, onAg
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
   const [lastResult, setLastResult] = useState<unknown>(null);
-  const [speaking, setSpeaking] = useState(false);
+  const { speaking, play, stop } = useSpeech();
 
   useEffect(() => setMemberId(role.memberId ?? null), [role.memberId]);
   useEffect(() => setAssigneeType(role.assigneeType ?? 'HUMAN'), [role.assigneeType]);
@@ -91,6 +91,8 @@ export default function RoleCard({ role, members, excludeMemberIds, onSave, onAg
       const tokens = usage.inputTokens + usage.outputTokens;
       show(`${TM_ROLE_LABELS[role.roleName] ?? role.roleName} agent finished — ${tokens.toLocaleString()} tokens · $${usage.costUsd.toFixed(4)}`);
       onAgentRun?.();
+      const text = agentResultSpeechText(result);
+      if (text) play(text);
     } catch (err) {
       show(extractError(err), 'error');
     } finally {
@@ -161,7 +163,9 @@ export default function RoleCard({ role, members, excludeMemberIds, onSave, onAg
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between mb-1">
                   <Badge variant="purple">{role.agentStatus === 'DONE' ? 'Generated' : 'Result'}</Badge>
-                  {speechText && <SpeakButton text={speechText} onSpeakingChange={setSpeaking} />}
+                  {speechText && (
+                    <SpeakButton speaking={speaking} onToggle={() => (speaking ? stop() : play(speechText))} />
+                  )}
                 </div>
                 <p className="text-xs text-surface-700 whitespace-pre-wrap">{preview}</p>
               </div>

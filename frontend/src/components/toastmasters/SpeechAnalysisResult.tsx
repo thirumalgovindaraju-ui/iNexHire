@@ -1,10 +1,11 @@
 // src/components/toastmasters/SpeechAnalysisResult.tsx — 4-panel AI speech analysis results
+import { useEffect, useRef } from 'react';
 import { Star, Copy, RotateCcw, CheckCircle2, XCircle } from 'lucide-react';
 import { Badge, Button, useToast } from '../ui';
 import { highlightFillerWords } from './highlightFillers';
 import { TM_FILLER_LABELS, TM_FILLER_WORDS } from '../../services/toastmasters';
 import type { TmSpeechAnalysis } from '../../services/toastmasters';
-import { SpeakButton } from './agentSpeech';
+import { SpeakButton, useSpeech } from './agentSpeech';
 
 function scoreColor(score: number, max: number) {
   const pct = score / max;
@@ -26,12 +27,26 @@ function StarRow({ label, value }: { label: string; value: number | null | undef
   );
 }
 
-export default function SpeechAnalysisResult({ analysis, onRecordAgain, onSpeakingChange }: {
+export default function SpeechAnalysisResult({ analysis, onRecordAgain, onSpeakingChange, autoPlay }: {
   analysis: TmSpeechAnalysis;
   onRecordAgain: () => void;
   onSpeakingChange?: (speaking: boolean) => void;
+  /** Read the transcript aloud immediately once, for an unattended "run the show" flow. */
+  autoPlay?: boolean;
 }) {
   const { show, ToastContainer } = useToast();
+  const { speaking, play, stop } = useSpeech(onSpeakingChange);
+  const autoPlayedRef = useRef(false);
+  useEffect(() => {
+    if (autoPlay && !autoPlayedRef.current) {
+      autoPlayedRef.current = true;
+      play(analysis.transcript);
+    }
+    // Re-checked (not mount-only) so toggling autoPlay on later — e.g. starting
+    // "Auto-Play Show" while already sitting on an already-hydrated result — still
+    // speaks it; the ref above still guarantees it only ever plays once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoPlay]);
   const filler = analysis.fillerWordCounts;
   const maxFillerCount = Math.max(1, ...TM_FILLER_WORDS.filter((w) => w !== 'other').map((w) => (filler as any)[w] ?? 0));
 
@@ -148,7 +163,7 @@ export default function SpeechAnalysisResult({ analysis, onRecordAgain, onSpeaki
       <div className="rounded-lg border border-surface-200 bg-white p-3 max-h-40 overflow-y-auto text-sm leading-relaxed">
         <div className="flex items-center justify-between mb-2">
           <p className="text-xs font-semibold uppercase text-surface-500">Transcript</p>
-          <SpeakButton text={analysis.transcript} label="Listen to speech" onSpeakingChange={onSpeakingChange} />
+          <SpeakButton speaking={speaking} onToggle={() => (speaking ? stop() : play(analysis.transcript))} label="Listen to speech" />
         </div>
         {highlightFillerWords(analysis.transcript)}
       </div>

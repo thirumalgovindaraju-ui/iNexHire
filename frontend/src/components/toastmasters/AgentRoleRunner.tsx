@@ -1,16 +1,18 @@
 // src/components/toastmasters/AgentRoleRunner.tsx — agent-mode counterpart to
 // VoiceRecorder.tsx, shown during Run Meeting for any role assigned to an AI agent.
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Bot, Loader2, Sparkles } from 'lucide-react';
 import { Badge, Button, useToast } from '../ui';
 import SpeechAnalysisResult from './SpeechAnalysisResult';
 import { TM_NAVY } from './theme';
 import { extractError } from '../../services/api';
-import { speechAnalysisApi, rolesApi } from '../../services/toastmasters';
+import { speechAnalysisApi, evaluationsApi, rolesApi, TM_SPEAKER_EVALUATOR_PAIRS } from '../../services/toastmasters';
 import type { TmRoleAssignment, TmSpeechAnalysis } from '../../services/toastmasters';
-import { agentResultSpeechText, SpeakButton } from './agentSpeech';
+import { agentResultSpeechText, SpeakButton, useSpeech } from './agentSpeech';
 
 const STATUS_LABEL: Record<string, string> = { PENDING: 'Not run yet', RUNNING: 'Running…', DONE: 'Done', FAILED: 'Failed — try again' };
+const SPEAKER_ROLES = new Set(TM_SPEAKER_EVALUATOR_PAIRS.map(([s]) => s));
+const EVALUATOR_ROLES = new Set(TM_SPEAKER_EVALUATOR_PAIRS.map(([, e]) => e));
 
 function agentResultBody(result: unknown) {
   if (!result || typeof result !== 'object') return null;
@@ -42,16 +44,31 @@ function agentResultBody(result: unknown) {
   return null;
 }
 
-export default function AgentRoleRunner({ role, roleLabel, onRoleUpdate, onSpeakingChange }: {
+export default function AgentRoleRunner({ role, roleLabel, onRoleUpdate, onSpeakingChange, autoRun, onAutoAdvance }: {
   role: TmRoleAssignment;
   roleLabel: string;
   onRoleUpdate?: (role: TmRoleAssignment) => void;
   onSpeakingChange?: (speaking: boolean) => void;
+  /** Self-trigger (generate if needed, then speak) as soon as this mounts — the
+   * "run the whole show unattended" mode driven by RunMeeting. */
+  autoRun?: boolean;
+  /** Called once this role's turn is over (speech finished, nothing to say, or the
+   * run failed) — only meaningful together with autoRun. */
+  onAutoAdvance?: () => void;
 }) {
   const { show, ToastContainer } = useToast();
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<unknown>(role.agentOutput ?? null);
   const [speechAnalysis, setSpeechAnalysis] = useState<TmSpeechAnalysis | null>(null);
+  const [shouldAutoPlay, setShouldAutoPlay] = useState(false);
+
+  const wasSpeakingRef = useRef(false);
+  function handleSpeakingChange(nowSpeaking: boolean) {
+    onSpeakingChange?.(nowSpeaking);
+    if (wasSpeakingRef.current && !nowSpeaking) onAutoAdvance?.();
+    wasSpeakingRef.current = nowSpeaking;
+  }
+  const { speaking, play, stop } = useSpeech(handleSpeakingChange);
   const speechText = agentResultSpeechText(result);
 
   async function run() {
@@ -64,14 +81,72 @@ export default function AgentRoleRunner({ role, roleLabel, onRoleUpdate, onSpeak
       show(`${roleLabel} agent finished — ${tokens.toLocaleString()} tokens · $${usage.costUsd.toFixed(4)}`);
       if (r && typeof r === 'object' && 'transcript' in (r as any)) {
         const analysis = await speechAnalysisApi.getForRole(role.id).catch(() => null);
+        setShouldAutoPlay(true);
         setSpeechAnalysis(analysis);
+        if (!analysis) onAutoAdvance?.();
+      } else {
+        const text = agentResultSpeechText(r);
+        if (text) play(text); else onAutoAdvance?.();
       }
     } catch (err) {
       show(extractError(err), 'error');
+      onAutoAdvance?.();
     } finally {
       setRunning(false);
     }
   }
+
+  // Hydrate speaker/evaluator content generated in an earlier visit or page load —
+  // that content lives in TmSpeechAnalysis / TmEvaluation, not role.agentOutput, so
+  // it wouldn't otherwise show up again without re-running the agent. Read-only and
+  // idempotent, so it's safe regardless of autoRun or React StrictMode's dev-mode
+  // double-invoke of mount effects.
+  useEffect(() => {
+    if (role.agentStatus !== 'DONE') return;
+    if (SPEAKER_ROLES.has(role.roleName)) {
+      speechAnalysisApi.getForRole(role.id).then((analysis) => { if (analysis) setSpeechAnalysis(analysis); }).catch(() => {});
+    } else if (EVALUATOR_ROLES.has(role.roleName)) {
+      evaluationsApi.list(role.meetingId).then((evals) => {
+        const mine = evals.find((e) => e.evaluatorRoleId === role.id);
+        if (mine) setResult(mine);
+      }).catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // The unattended-show trigger: generate if needed, or replay+speak if already
+  // done. Guarded to act at most once per "autoRun turned on" activation — this
+  // component can mount with autoRun already true (landing here mid-show), which
+  // is exactly the case React StrictMode double-invokes in dev; without the guard
+  // that means run-agent (a real, billable call) firing twice.
+  const autoActedRef = useRef(false);
+  useEffect(() => {
+    if (!autoRun) { autoActedRef.current = false; return; }
+    if (autoActedRef.current) return;
+    autoActedRef.current = true;
+
+    if (role.agentStatus !== 'DONE') { run(); return; }
+
+    if (SPEAKER_ROLES.has(role.roleName)) {
+      speechAnalysisApi.getForRole(role.id).then((analysis) => {
+        if (analysis) { setSpeechAnalysis(analysis); setShouldAutoPlay(true); }
+        else onAutoAdvance?.();
+      }).catch(() => onAutoAdvance?.());
+      return;
+    }
+    if (EVALUATOR_ROLES.has(role.roleName)) {
+      evaluationsApi.list(role.meetingId).then((evals) => {
+        const mine = evals.find((e) => e.evaluatorRoleId === role.id) ?? null;
+        setResult(mine);
+        const text = agentResultSpeechText(mine);
+        if (text) play(text); else onAutoAdvance?.();
+      }).catch(() => onAutoAdvance?.());
+      return;
+    }
+    const text = agentResultSpeechText(role.agentOutput);
+    if (text) play(text); else onAutoAdvance?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRun]);
 
   return (
     <div className="rounded-lg border border-surface-200 bg-white p-4">
@@ -84,12 +159,12 @@ export default function AgentRoleRunner({ role, roleLabel, onRoleUpdate, onSpeak
       </div>
 
       {speechAnalysis ? (
-        <SpeechAnalysisResult analysis={speechAnalysis} onRecordAgain={run} onSpeakingChange={onSpeakingChange} />
+        <SpeechAnalysisResult analysis={speechAnalysis} onRecordAgain={run} onSpeakingChange={handleSpeakingChange} autoPlay={shouldAutoPlay} />
       ) : (
         <div className="flex flex-col gap-3">
           {speechText && (
             <div className="flex justify-end">
-              <SpeakButton text={speechText} onSpeakingChange={onSpeakingChange} />
+              <SpeakButton speaking={speaking} onToggle={() => (speaking ? stop() : play(speechText))} />
             </div>
           )}
           {agentResultBody(result)}
