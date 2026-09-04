@@ -25,28 +25,36 @@ export function agentResultSpeechText(result: unknown): string | null {
   return null;
 }
 
-export function SpeakButton({ text, label = 'Listen', className = '' }: {
-  text: string; label?: string; className?: string;
+export function SpeakButton({ text, label = 'Listen', className = '', onSpeakingChange }: {
+  text: string; label?: string; className?: string; onSpeakingChange?: (speaking: boolean) => void;
 }) {
   const [speaking, setSpeaking] = useState(false);
 
+  function setSpeakingState(value: boolean) {
+    setSpeaking(value);
+    onSpeakingChange?.(value);
+  }
+
   // Stop speaking if this card unmounts (e.g. navigating away mid-speech).
-  useEffect(() => () => { if (canSpeak) window.speechSynthesis.cancel(); }, []);
+  useEffect(() => () => {
+    if (canSpeak) window.speechSynthesis.cancel();
+    onSpeakingChange?.(false);
+  }, []);
 
   if (!canSpeak || !text.trim()) return null;
 
   function toggle() {
     if (speaking) {
       window.speechSynthesis.cancel();
-      setSpeaking(false);
+      setSpeakingState(false);
       return;
     }
     window.speechSynthesis.cancel(); // only one agent should speak at a time
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.onend = () => setSpeaking(false);
-    utterance.onerror = () => setSpeaking(false);
+    utterance.onend = () => setSpeakingState(false);
+    utterance.onerror = () => setSpeakingState(false);
     window.speechSynthesis.speak(utterance);
-    setSpeaking(true);
+    setSpeakingState(true);
   }
 
   return (

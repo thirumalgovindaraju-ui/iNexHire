@@ -42,10 +42,11 @@ function agentResultBody(result: unknown) {
   return null;
 }
 
-export default function AgentRoleRunner({ role, roleLabel, onRoleUpdate }: {
+export default function AgentRoleRunner({ role, roleLabel, onRoleUpdate, onSpeakingChange }: {
   role: TmRoleAssignment;
   roleLabel: string;
   onRoleUpdate?: (role: TmRoleAssignment) => void;
+  onSpeakingChange?: (speaking: boolean) => void;
 }) {
   const { show, ToastContainer } = useToast();
   const [running, setRunning] = useState(false);
@@ -83,12 +84,12 @@ export default function AgentRoleRunner({ role, roleLabel, onRoleUpdate }: {
       </div>
 
       {speechAnalysis ? (
-        <SpeechAnalysisResult analysis={speechAnalysis} onRecordAgain={run} />
+        <SpeechAnalysisResult analysis={speechAnalysis} onRecordAgain={run} onSpeakingChange={onSpeakingChange} />
       ) : (
         <div className="flex flex-col gap-3">
           {speechText && (
             <div className="flex justify-end">
-              <SpeakButton text={speechText} />
+              <SpeakButton text={speechText} onSpeakingChange={onSpeakingChange} />
             </div>
           )}
           {agentResultBody(result)}

@@ -7,6 +7,7 @@ import { TM_GOLD, TM_NAVY, TM_ZONE_COLOR, agendaZone, formatSecs } from '../../c
 import { findRoleForActivity } from '../../components/toastmasters/matchAgendaRole';
 import VoiceRecorder from '../../components/toastmasters/VoiceRecorder';
 import AgentRoleRunner from '../../components/toastmasters/AgentRoleRunner';
+import MeetingCallGrid from '../../components/toastmasters/MeetingCallGrid';
 import {
   TM_FILLER_COUNT_KEY, TM_FILLER_LABELS, TM_FILLER_WORDS, TM_ROLE_SHORT_LABELS,
   ahCounterApi, agendaApi, meetingsApi, membersApi, timerApi,
@@ -30,6 +31,7 @@ export default function RunMeeting() {
   const [elapsed, setElapsed] = useState(0);
   const [running, setRunning] = useState(false);
   const [speakerId, setSpeakerId] = useState<string>('');
+  const [speakingRoleId, setSpeakingRoleId] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -129,6 +131,12 @@ export default function RunMeeting() {
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
+      <MeetingCallGrid
+        roles={meeting.roleAssignments ?? []}
+        activeRoleId={effectiveRole?.id}
+        speakingRoleId={speakingRoleId}
+      />
+
       <div className="mb-4">
         <div className="h-2 rounded-full bg-surface-100 overflow-hidden">
           <div className="h-full transition-all" style={{ width: `${progressPct}%`, background: TM_GOLD }} />
@@ -248,6 +256,7 @@ export default function RunMeeting() {
             role={effectiveRole}
             roleLabel={TM_ROLE_SHORT_LABELS[effectiveRole.roleName] ?? effectiveRole.roleName}
             onRoleUpdate={refreshAfterAgentRun}
+            onSpeakingChange={(speaking) => setSpeakingRoleId(speaking ? effectiveRole.id : null)}
           />
         </div>
       )}

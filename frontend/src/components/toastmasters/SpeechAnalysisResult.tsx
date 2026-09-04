@@ -26,9 +26,10 @@ function StarRow({ label, value }: { label: string; value: number | null | undef
   );
 }
 
-export default function SpeechAnalysisResult({ analysis, onRecordAgain }: {
+export default function SpeechAnalysisResult({ analysis, onRecordAgain, onSpeakingChange }: {
   analysis: TmSpeechAnalysis;
   onRecordAgain: () => void;
+  onSpeakingChange?: (speaking: boolean) => void;
 }) {
   const { show, ToastContainer } = useToast();
   const filler = analysis.fillerWordCounts;
@@ -147,7 +148,7 @@ export default function SpeechAnalysisResult({ analysis, onRecordAgain }: {
       <div className="rounded-lg border border-surface-200 bg-white p-3 max-h-40 overflow-y-auto text-sm leading-relaxed">
         <div className="flex items-center justify-between mb-2">
           <p className="text-xs font-semibold uppercase text-surface-500">Transcript</p>
-          <SpeakButton text={analysis.transcript} label="Listen to speech" />
+          <SpeakButton text={analysis.transcript} label="Listen to speech" onSpeakingChange={onSpeakingChange} />
         </div>
         {highlightFillerWords(analysis.transcript)}
       </div>

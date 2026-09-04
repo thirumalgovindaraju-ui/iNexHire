@@ -8,6 +8,7 @@ import { TM_NAVY } from './theme';
 import { TM_ROLE_LABELS, TM_SPEAKER_EVALUATOR_PAIRS, rolesApi } from '../../services/toastmasters';
 import type { TmAssigneeType, TmMember, TmRoleAssignment, UpdateRoleInput } from '../../services/toastmasters';
 import { agentResultSpeechText, SpeakButton } from './agentSpeech';
+import { TalkingAvatar } from './TalkingAvatar';
 
 const SPEAKER_ROLES = new Set(TM_SPEAKER_EVALUATOR_PAIRS.map(([s]) => s));
 
@@ -49,6 +50,7 @@ export default function RoleCard({ role, members, excludeMemberIds, onSave, onAg
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
   const [lastResult, setLastResult] = useState<unknown>(null);
+  const [speaking, setSpeaking] = useState(false);
 
   useEffect(() => setMemberId(role.memberId ?? null), [role.memberId]);
   useEffect(() => setAssigneeType(role.assigneeType ?? 'HUMAN'), [role.assigneeType]);
@@ -78,9 +80,12 @@ export default function RoleCard({ role, members, excludeMemberIds, onSave, onAg
     }
   }
 
+  const hasUnsavedChanges = assigneeType !== (role.assigneeType ?? 'HUMAN') || memberId !== (role.memberId ?? null);
+
   async function handleRunAgent() {
     setRunning(true);
     try {
+      if (hasUnsavedChanges) await handleSave();
       const { result, usage } = await rolesApi.runAgent(role.id);
       setLastResult(result);
       const tokens = usage.inputTokens + usage.outputTokens;
@@ -151,11 +156,16 @@ export default function RoleCard({ role, members, excludeMemberIds, onSave, onAg
 
         {isAgent && preview && (
           <div className="mt-1 rounded-md bg-brand-50 border border-brand-100 p-2">
-            <div className="flex items-center justify-between mb-1">
-              <Badge variant="purple">{role.agentStatus === 'DONE' ? 'Generated' : 'Result'}</Badge>
-              {speechText && <SpeakButton text={speechText} />}
+            <div className="flex items-start gap-2">
+              {speechText && <TalkingAvatar speaking={speaking} size={48} />}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between mb-1">
+                  <Badge variant="purple">{role.agentStatus === 'DONE' ? 'Generated' : 'Result'}</Badge>
+                  {speechText && <SpeakButton text={speechText} onSpeakingChange={setSpeaking} />}
+                </div>
+                <p className="text-xs text-surface-700 whitespace-pre-wrap">{preview}</p>
+              </div>
             </div>
-            <p className="text-xs text-surface-700 whitespace-pre-wrap">{preview}</p>
           </div>
         )}
         {isAgent && role.agentStatus === 'FAILED' && (
