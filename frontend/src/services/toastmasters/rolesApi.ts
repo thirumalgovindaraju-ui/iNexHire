@@ -1,6 +1,6 @@
 // src/services/toastmasters/rolesApi.ts
 import { tm } from './httpClient';
-import type { TmAssigneeType, TmRoleAssignment } from './types';
+import type { TmAgentAccent, TmAgentGender, TmAssigneeType, TmRoleAssignment } from './types';
 
 export interface UpdateRoleInput {
   memberId?: string | null;
@@ -12,6 +12,8 @@ export interface UpdateRoleInput {
   greenMins?: number;
   yellowMins?: number;
   redMins?: number;
+  agentGender?: TmAgentGender | null;
+  agentAccent?: TmAgentAccent | null;
 }
 
 export const rolesApi = {

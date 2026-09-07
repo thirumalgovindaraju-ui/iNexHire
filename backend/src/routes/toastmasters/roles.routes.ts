@@ -35,6 +35,8 @@ const assignRoleSchema = z.object({
   greenMins: z.number().int().positive().optional(),
   yellowMins: z.number().int().positive().optional(),
   redMins: z.number().int().positive().optional(),
+  agentGender: z.enum(['MALE', 'FEMALE']).nullable().optional(),
+  agentAccent: z.enum(['US', 'UK']).nullable().optional(),
 });
 
 // PATCH /api/toastmasters/roles/:roleId — assign member / AI agent / speech details

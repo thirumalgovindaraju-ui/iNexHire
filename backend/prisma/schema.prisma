@@ -816,6 +816,8 @@ model TmRoleAssignment {
   agentStatus  String? // PENDING | RUNNING | DONE | FAILED
   agentOutput  Json? // freeform result for roles with no dedicated table (table topics, procedural roles)
   agentRunAt   DateTime?
+  agentGender  String? // MALE | FEMALE — persona for this AI agent's avatar + TTS voice
+  agentAccent  String? // US | UK — persona accent/locale for this AI agent's TTS voice
 
   createdAt DateTime @default(now())
 

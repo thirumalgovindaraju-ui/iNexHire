@@ -38,12 +38,16 @@ export default function MeetingCallGrid({ roles, activeRoleId, speakingRoleId }:
                   : 'none',
               }}
             >
-              {isAgent ? <TalkingAvatar speaking={isSpeaking} size={64} /> : <InitialsAvatar name={role.member!.name} size={64} />}
+              {isAgent ? (
+                <TalkingAvatar speaking={isSpeaking} size={64} gender={role.agentGender ?? 'MALE'} />
+              ) : (
+                <InitialsAvatar name={role.member!.name} size={64} />
+              )}
               {isSpeaking && (
                 <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: TM_GOLD }}>● Speaking</p>
               )}
               <p className="text-[11px] font-semibold text-white/90 text-center leading-tight truncate w-full">
-                {role.member?.name ?? 'AI Agent'}
+                {role.member?.name ?? 'AI Agent'}{isAgent && role.agentAccent ? ` ${role.agentAccent === 'UK' ? '🇬🇧' : '🇺🇸'}` : ''}
               </p>
               <p className="text-[10px] text-white/50 text-center leading-tight truncate w-full">
                 {TM_ROLE_SHORT_LABELS[role.roleName] ?? role.roleName}

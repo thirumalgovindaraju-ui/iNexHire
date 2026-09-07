@@ -40,6 +40,11 @@ router.post('/roles/:roleId/run-agent', async (req, res, next) => {
     }
 
     if (SPEAKER_ROLES.has(role.roleName)) {
+      const priorAnalyses = await prisma.tmSpeechAnalysis.findMany({
+        where: { meetingId: role.meetingId, roleAssignmentId: { not: role.id } },
+        include: { roleAssignment: { include: { member: true } } },
+        orderBy: { createdAt: 'asc' },
+      });
       const generated = await generateAgentSpeech({
         roleName: role.roleName,
         speechTitle: role.speechTitle ?? undefined,
@@ -47,6 +52,11 @@ router.post('/roles/:roleId/run-agent', async (req, res, next) => {
         manualNumber: role.manualNumber ?? undefined,
         wordOfDay: role.meeting.wordOfDay ?? undefined,
         theme: role.meeting.theme ?? undefined,
+        priorSpeeches: priorAnalyses.map((a) => ({
+          speakerLabel: a.roleAssignment.member?.name ?? a.roleAssignment.roleName,
+          title: a.roleAssignment.speechTitle ?? undefined,
+          transcript: a.transcript,
+        })),
       });
       addUsage(generated.usage);
       if (!generated.transcript.trim()) throw new Error('Agent produced an empty speech transcript');

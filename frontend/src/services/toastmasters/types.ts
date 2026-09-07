@@ -91,6 +91,8 @@ export interface TmMember {
 
 export type TmAssigneeType = 'HUMAN' | 'AI_AGENT';
 export type TmAgentStatus = 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED';
+export type TmAgentGender = 'MALE' | 'FEMALE';
+export type TmAgentAccent = 'US' | 'UK';
 
 export interface TmRoleAssignment {
   id: string;
@@ -109,6 +111,8 @@ export interface TmRoleAssignment {
   agentStatus?: TmAgentStatus | null;
   agentOutput?: { note?: string; topics?: string[] } | null;
   agentRunAt?: string | null;
+  agentGender?: TmAgentGender | null;
+  agentAccent?: TmAgentAccent | null;
 }
 
 export interface TmAgendaItem {

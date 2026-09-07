@@ -1,12 +1,12 @@
 // src/components/toastmasters/RoleCard.tsx — role assignment card with per-card Save
 import { useEffect, useState } from 'react';
 import { Bot, Check, Loader2, Sparkles } from 'lucide-react';
-import { Badge, Button, Input, useToast } from '../ui';
+import { Badge, Button, Input, Select, useToast } from '../ui';
 import MemberSearchSelect from './MemberSearchSelect';
 import { extractError } from '../../services/api';
 import { TM_NAVY } from './theme';
 import { TM_ROLE_LABELS, TM_SPEAKER_EVALUATOR_PAIRS, rolesApi } from '../../services/toastmasters';
-import type { TmAssigneeType, TmMember, TmRoleAssignment, UpdateRoleInput } from '../../services/toastmasters';
+import type { TmAgentAccent, TmAgentGender, TmAssigneeType, TmMember, TmRoleAssignment, UpdateRoleInput } from '../../services/toastmasters';
 import { agentResultSpeechText, SpeakButton, useSpeech } from './agentSpeech';
 import { TalkingAvatar } from './TalkingAvatar';
 
@@ -41,6 +41,8 @@ export default function RoleCard({ role, members, excludeMemberIds, onSave, onAg
 
   const [memberId, setMemberId] = useState(role.memberId ?? null);
   const [assigneeType, setAssigneeType] = useState<TmAssigneeType>(role.assigneeType ?? 'HUMAN');
+  const [agentGender, setAgentGender] = useState<TmAgentGender>(role.agentGender ?? 'MALE');
+  const [agentAccent, setAgentAccent] = useState<TmAgentAccent>(role.agentAccent ?? 'US');
   const [speechTitle, setSpeechTitle] = useState(role.speechTitle ?? '');
   const [pathwaysProject, setPathwaysProject] = useState(role.pathwaysProject ?? '');
   const [manualNumber, setManualNumber] = useState(role.manualNumber ?? '');
@@ -54,6 +56,8 @@ export default function RoleCard({ role, members, excludeMemberIds, onSave, onAg
 
   useEffect(() => setMemberId(role.memberId ?? null), [role.memberId]);
   useEffect(() => setAssigneeType(role.assigneeType ?? 'HUMAN'), [role.assigneeType]);
+  useEffect(() => setAgentGender(role.agentGender ?? 'MALE'), [role.agentGender]);
+  useEffect(() => setAgentAccent(role.agentAccent ?? 'US'), [role.agentAccent]);
 
   const isAgent = assigneeType === 'AI_AGENT';
 
@@ -68,6 +72,7 @@ export default function RoleCard({ role, members, excludeMemberIds, onSave, onAg
       await onSave({
         memberId,
         assigneeType,
+        ...(isAgent ? { agentGender, agentAccent } : {}),
         ...(isSpeaker ? { speechTitle, pathwaysProject, manualNumber } : {}),
         ...(isSpeaker || isTimer ? {
           greenMins: greenMins ? Number(greenMins) : undefined,
@@ -80,7 +85,8 @@ export default function RoleCard({ role, members, excludeMemberIds, onSave, onAg
     }
   }
 
-  const hasUnsavedChanges = assigneeType !== (role.assigneeType ?? 'HUMAN') || memberId !== (role.memberId ?? null);
+  const hasUnsavedChanges = assigneeType !== (role.assigneeType ?? 'HUMAN') || memberId !== (role.memberId ?? null)
+    || (isAgent && (agentGender !== (role.agentGender ?? 'MALE') || agentAccent !== (role.agentAccent ?? 'US')));
 
   async function handleRunAgent() {
     setRunning(true);
@@ -92,7 +98,7 @@ export default function RoleCard({ role, members, excludeMemberIds, onSave, onAg
       show(`${TM_ROLE_LABELS[role.roleName] ?? role.roleName} agent finished — ${tokens.toLocaleString()} tokens · $${usage.costUsd.toFixed(4)}`);
       onAgentRun?.();
       const text = agentResultSpeechText(result);
-      if (text) play(text);
+      if (text) play(text, { accent: agentAccent, gender: agentGender });
     } catch (err) {
       show(extractError(err), 'error');
     } finally {
@@ -129,6 +135,21 @@ export default function RoleCard({ role, members, excludeMemberIds, onSave, onAg
           excludeMemberIds={excludeMemberIds}
         />
 
+        {isAgent && (
+          <div className="grid grid-cols-2 gap-2">
+            <Select
+              value={agentGender}
+              onChange={(e) => setAgentGender(e.target.value as TmAgentGender)}
+              options={[{ value: 'MALE', label: '♂ Male voice/avatar' }, { value: 'FEMALE', label: '♀ Female voice/avatar' }]}
+            />
+            <Select
+              value={agentAccent}
+              onChange={(e) => setAgentAccent(e.target.value as TmAgentAccent)}
+              options={[{ value: 'US', label: '🇺🇸 US accent' }, { value: 'UK', label: '🇬🇧 UK accent' }]}
+            />
+          </div>
+        )}
+
         {isSpeaker && (
           <>
             <Input placeholder="Speech title" value={speechTitle} onChange={(e) => setSpeechTitle(e.target.value)} />
@@ -159,12 +180,12 @@ export default function RoleCard({ role, members, excludeMemberIds, onSave, onAg
         {isAgent && preview && (
           <div className="mt-1 rounded-md bg-brand-50 border border-brand-100 p-2">
             <div className="flex items-start gap-2">
-              {speechText && <TalkingAvatar speaking={speaking} size={48} />}
+              {speechText && <TalkingAvatar speaking={speaking} size={48} gender={agentGender} />}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between mb-1">
                   <Badge variant="purple">{role.agentStatus === 'DONE' ? 'Generated' : 'Result'}</Badge>
                   {speechText && (
-                    <SpeakButton speaking={speaking} onToggle={() => (speaking ? stop() : play(speechText))} />
+                    <SpeakButton speaking={speaking} onToggle={() => (speaking ? stop() : play(speechText, { accent: agentAccent, gender: agentGender }))} />
                   )}
                 </div>
                 <p className="text-xs text-surface-700 whitespace-pre-wrap">{preview}</p>

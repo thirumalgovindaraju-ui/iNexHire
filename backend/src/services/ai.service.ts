@@ -1889,7 +1889,20 @@ export async function generateAgentSpeech(params: {
   manualNumber?: string;
   wordOfDay?: string;
   theme?: string;
+  /** Speeches already given earlier in this same meeting (in agenda order), so this
+   * agent can speak as an individual reacting to what the room has already heard —
+   * not generating in isolation. Kept short (title + excerpt) to bound prompt cost. */
+  priorSpeeches?: { speakerLabel: string; title?: string; transcript: string }[];
 }): Promise<{ title: string; transcript: string; usage: AgentUsage }> {
+  const priorSpeechesBlock = params.priorSpeeches?.length
+    ? `\nEarlier in this meeting, these speakers already spoke — you were in the room and heard them, so where it fits naturally,
+acknowledge, react to, or build on something specific one of them said (a phrase, a story beat, a theme) the way a real
+member would, rather than ignoring the rest of the meeting:\n${params.priorSpeeches
+        .slice(0, 3)
+        .map((p, i) => `${i + 1}. ${p.speakerLabel}${p.title ? ` — "${p.title}"` : ''}: "${p.transcript.slice(0, 400)}${p.transcript.length > 400 ? '…' : ''}"`)
+        .join('\n')}\n`
+    : '';
+
   const prompt = `You are an experienced Toastmasters club member preparing to deliver a prepared speech at a club meeting.
 
 ${params.speechTitle ? `The speech title is: "${params.speechTitle}"` : 'No title has been set yet — invent a fitting one.'}
@@ -1897,7 +1910,7 @@ ${params.pathwaysProject ? `Pathways project: ${params.pathwaysProject}` : ''}
 ${params.manualNumber ? `Manual project number: ${params.manualNumber}` : ''}
 ${params.theme ? `Meeting theme: ${params.theme}` : ''}
 ${params.wordOfDay ? `Try to naturally use the meeting's Word of the Day at least once: "${params.wordOfDay}"` : ''}
-
+${priorSpeechesBlock}
 Write a full ~5-7 minute Toastmasters speech transcript (roughly 700-950 words) as if being spoken aloud — first person,
 natural spoken cadence, a clear opening hook, a structured body (2-3 points or a short story arc), and a memorable
 conclusion. This is the literal transcript, not an outline or stage directions.

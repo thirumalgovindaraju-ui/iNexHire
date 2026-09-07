@@ -29,13 +29,22 @@ const AVATAR_KEYFRAMES = `
 
 const SKIN = '#e0ac80';
 const SKIN_SHADE = '#c98f63';
-const HAIR = '#2e2118';
 const LIPS = '#a15c5c';
-const SHIRT = '#1B2A4A';
 const BACKDROP = '#eef1f5';
 
-export function TalkingAvatar({ speaking, size = 56 }: { speaking: boolean; size?: number }) {
+// Gender is only ever a cosmetic avatar/voice persona choice the user makes for an
+// AI agent role — these are the two illustrated variants, not a claim about anyone real.
+const GENDER_STYLE = {
+  MALE: { hair: '#2e2118', shirt: '#1B2A4A', lips: LIPS },
+  FEMALE: { hair: '#4a2e22', shirt: '#6b2340', lips: '#c2637a' },
+} as const;
+
+export function TalkingAvatar({ speaking, size = 56, gender = 'MALE' }: {
+  speaking: boolean; size?: number; gender?: 'MALE' | 'FEMALE';
+}) {
   const clipId = useId();
+  const style = GENDER_STYLE[gender] ?? GENDER_STYLE.MALE;
+  const isFemale = gender === 'FEMALE';
   return (
     <div
       className="relative rounded-full flex items-center justify-center flex-shrink-0"
@@ -50,20 +59,22 @@ export function TalkingAvatar({ speaking, size = 56 }: { speaking: boolean; size
         </defs>
         <circle cx="50" cy="50" r="48" fill={BACKDROP} />
         <g clipPath={`url(#${clipId})`} style={{ animation: speaking ? 'tm-head-bob 0.6s ease-in-out infinite' : 'none' }}>
+          {/* long hair falling past the shoulders (female variant only), behind everything else */}
+          {isFemale && <path d="M 20 100 Q 16 46 50 40 Q 84 46 80 100 Z" fill={style.hair} />}
           {/* shoulders / shirt */}
-          <path d="M 14 100 Q 16 74 50 71 Q 84 74 86 100 Z" fill={SHIRT} />
+          <path d="M 14 100 Q 16 74 50 71 Q 84 74 86 100 Z" fill={style.shirt} />
           {/* neck */}
           <rect x="42" y="64" width="16" height="16" rx="5" fill={SKIN_SHADE} />
           {/* hair (behind face) */}
-          <ellipse cx="50" cy="34" rx="27" ry="24" fill={HAIR} />
+          <ellipse cx="50" cy="34" rx="27" ry="24" fill={style.hair} />
           {/* ears */}
           <ellipse cx="24" cy="48" rx="4" ry="6" fill={SKIN} />
           <ellipse cx="76" cy="48" rx="4" ry="6" fill={SKIN} />
           {/* face */}
           <ellipse cx="50" cy="48" rx="24" ry="26" fill={SKIN} />
           {/* eyebrows */}
-          <rect x="33" y="38" width="11" height="2.4" rx="1.2" fill={HAIR} transform="rotate(-4 38.5 39.2)" />
-          <rect x="56" y="38" width="11" height="2.4" rx="1.2" fill={HAIR} transform="rotate(4 61.5 39.2)" />
+          <rect x="33" y="38" width="11" height="2.4" rx="1.2" fill={style.hair} transform="rotate(-4 38.5 39.2)" />
+          <rect x="56" y="38" width="11" height="2.4" rx="1.2" fill={style.hair} transform="rotate(4 61.5 39.2)" />
           {/* eyes (blink together) */}
           <g style={{ transformBox: 'fill-box', transformOrigin: 'center', animation: 'tm-blink 4.2s ease-in-out infinite' }}>
             <ellipse cx="40" cy="46" rx="4.6" ry="3.6" fill="#ffffff" />
@@ -77,11 +88,11 @@ export function TalkingAvatar({ speaking, size = 56 }: { speaking: boolean; size
           {speaking ? (
             <ellipse
               key="talking"
-              cx="50" cy="62" rx="10" ry="3.4" fill={LIPS}
+              cx="50" cy="62" rx="10" ry="3.4" fill={style.lips}
               style={{ transformBox: 'fill-box', transformOrigin: 'center', animation: 'tm-mouth-talk 0.38s ease-in-out infinite' }}
             />
           ) : (
-            <ellipse key="idle" cx="50" cy="63" rx="8" ry="1.6" fill={LIPS} />
+            <ellipse key="idle" cx="50" cy="63" rx="8" ry="1.6" fill={style.lips} />
           )}
         </g>
         <circle cx="50" cy="50" r="48" fill="none" stroke={TM_GOLD} strokeWidth="2" />

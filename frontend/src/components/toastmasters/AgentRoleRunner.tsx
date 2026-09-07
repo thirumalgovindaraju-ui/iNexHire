@@ -86,7 +86,7 @@ export default function AgentRoleRunner({ role, roleLabel, onRoleUpdate, onSpeak
         if (!analysis) onAutoAdvance?.();
       } else {
         const text = agentResultSpeechText(r);
-        if (text) play(text); else onAutoAdvance?.();
+        if (text) play(text, { accent: role.agentAccent, gender: role.agentGender }); else onAutoAdvance?.();
       }
     } catch (err) {
       show(extractError(err), 'error');
@@ -139,12 +139,12 @@ export default function AgentRoleRunner({ role, roleLabel, onRoleUpdate, onSpeak
         const mine = evals.find((e) => e.evaluatorRoleId === role.id) ?? null;
         setResult(mine);
         const text = agentResultSpeechText(mine);
-        if (text) play(text); else onAutoAdvance?.();
+        if (text) play(text, { accent: role.agentAccent, gender: role.agentGender }); else onAutoAdvance?.();
       }).catch(() => onAutoAdvance?.());
       return;
     }
     const text = agentResultSpeechText(role.agentOutput);
-    if (text) play(text); else onAutoAdvance?.();
+    if (text) play(text, { accent: role.agentAccent, gender: role.agentGender }); else onAutoAdvance?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoRun]);
 
@@ -159,12 +159,15 @@ export default function AgentRoleRunner({ role, roleLabel, onRoleUpdate, onSpeak
       </div>
 
       {speechAnalysis ? (
-        <SpeechAnalysisResult analysis={speechAnalysis} onRecordAgain={run} onSpeakingChange={handleSpeakingChange} autoPlay={shouldAutoPlay} />
+        <SpeechAnalysisResult
+          analysis={speechAnalysis} onRecordAgain={run} onSpeakingChange={handleSpeakingChange} autoPlay={shouldAutoPlay}
+          agentGender={role.agentGender} agentAccent={role.agentAccent}
+        />
       ) : (
         <div className="flex flex-col gap-3">
           {speechText && (
             <div className="flex justify-end">
-              <SpeakButton speaking={speaking} onToggle={() => (speaking ? stop() : play(speechText))} />
+              <SpeakButton speaking={speaking} onToggle={() => (speaking ? stop() : play(speechText, { accent: role.agentAccent, gender: role.agentGender }))} />
             </div>
           )}
           {agentResultBody(result)}
