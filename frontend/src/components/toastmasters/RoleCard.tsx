@@ -7,7 +7,7 @@ import { extractError } from '../../services/api';
 import { TM_NAVY } from './theme';
 import { TM_ROLE_LABELS, TM_SPEAKER_EVALUATOR_PAIRS, rolesApi } from '../../services/toastmasters';
 import type { TmAgentAccent, TmAgentGender, TmAssigneeType, TmMember, TmRoleAssignment, UpdateRoleInput } from '../../services/toastmasters';
-import { agentResultSpeechText, SpeakButton, useSpeech } from './agentSpeech';
+import { agentResultSpeechText, InterruptButton, SpeakButton, useAgentInterjection, useSpeech } from './agentSpeech';
 import { TalkingAvatar } from './TalkingAvatar';
 
 const SPEAKER_ROLES = new Set(TM_SPEAKER_EVALUATOR_PAIRS.map(([s]) => s));
@@ -52,7 +52,9 @@ export default function RoleCard({ role, members, excludeMemberIds, onSave, onAg
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
   const [lastResult, setLastResult] = useState<unknown>(null);
-  const { speaking, play, stop } = useSpeech();
+  const speech = useSpeech();
+  const { speaking, play, stop } = speech;
+  const interjection = useAgentInterjection(speech, role.id, { accent: agentAccent, gender: agentGender });
 
   useEffect(() => setMemberId(role.memberId ?? null), [role.memberId]);
   useEffect(() => setAssigneeType(role.assigneeType ?? 'HUMAN'), [role.assigneeType]);
@@ -184,9 +186,14 @@ export default function RoleCard({ role, members, excludeMemberIds, onSave, onAg
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between mb-1">
                   <Badge variant="purple">{role.agentStatus === 'DONE' ? 'Generated' : 'Result'}</Badge>
-                  {speechText && (
-                    <SpeakButton speaking={speaking} onToggle={() => (speaking ? stop() : play(speechText, { accent: agentAccent, gender: agentGender }))} />
-                  )}
+                  <div className="flex items-center gap-2">
+                    {speaking && (
+                      <InterruptButton state={interjection.state} onPressStart={interjection.pressStart} onPressEnd={interjection.pressEnd} />
+                    )}
+                    {speechText && (
+                      <SpeakButton speaking={speaking} onToggle={() => (speaking ? stop() : play(speechText, { accent: agentAccent, gender: agentGender }))} />
+                    )}
+                  </div>
                 </div>
                 <p className="text-xs text-surface-700 whitespace-pre-wrap">{preview}</p>
               </div>

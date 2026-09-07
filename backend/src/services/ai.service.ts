@@ -1938,6 +1938,51 @@ Return ONLY valid JSON in this exact shape, no other text:
   }
 }
 
+/**
+ * A member in the room interrupted this agent mid-speech (push-to-talk "Interrupt"
+ * button, see frontend agentSpeech.tsx) — generate a brief, natural, in-character
+ * reply to what they said, the way a real person would respond to being interrupted,
+ * rather than the agent silently resuming or ignoring them.
+ */
+export async function generateAgentInterjectionReply(params: {
+  roleName: string;
+  spokenSoFar: string;
+  userSaid: string;
+  wordOfDay?: string;
+}): Promise<{ reply: string; usage: AgentUsage }> {
+  const prompt = `You are an experienced Toastmasters club member currently mid-speech at a club meeting, fulfilling the "${params.roleName}" role.
+
+You were just interrupted by a fellow member in the room, right after you had said:
+"...${params.spokenSoFar.slice(-400)}"
+
+They just said to you: "${params.userSaid}"
+
+Respond the way a real person would when interrupted mid-sentence — briefly acknowledge them, answer directly if it's
+a question, and comply naturally if they're asking you to stop, wait, or repeat something. Stay in character for your
+role. Keep it to 1-3 short sentences in natural spoken cadence, not a written paragraph.
+
+Return ONLY valid JSON in this exact shape, no other text:
+{ "reply": "<your brief spoken response>" }`;
+
+  try {
+    const res = await anthropic.messages.create({
+      model: AGENT_MODEL,
+      max_tokens: 200,
+      temperature: 0.7,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const text = res.content[0].type === 'text' ? res.content[0].text : '{}';
+    const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
+    return {
+      reply: parsed.reply || '',
+      usage: { inputTokens: res.usage.input_tokens, outputTokens: res.usage.output_tokens },
+    };
+  } catch (err) {
+    console.error('[ai.service] generateAgentInterjectionReply failed:', err);
+    return { reply: '', usage: ZERO_USAGE };
+  }
+}
+
 export async function generateAgentEvaluation(params: {
   speechTranscript: string;
   speechTitle?: string;

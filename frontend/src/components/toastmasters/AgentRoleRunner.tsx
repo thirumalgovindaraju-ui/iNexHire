@@ -8,7 +8,7 @@ import { TM_NAVY } from './theme';
 import { extractError } from '../../services/api';
 import { speechAnalysisApi, evaluationsApi, rolesApi, TM_SPEAKER_EVALUATOR_PAIRS } from '../../services/toastmasters';
 import type { TmRoleAssignment, TmSpeechAnalysis } from '../../services/toastmasters';
-import { agentResultSpeechText, SpeakButton, useSpeech } from './agentSpeech';
+import { agentResultSpeechText, InterruptButton, SpeakButton, useAgentInterjection, useSpeech } from './agentSpeech';
 
 const STATUS_LABEL: Record<string, string> = { PENDING: 'Not run yet', RUNNING: 'Running…', DONE: 'Done', FAILED: 'Failed — try again' };
 const SPEAKER_ROLES = new Set(TM_SPEAKER_EVALUATOR_PAIRS.map(([s]) => s));
@@ -68,7 +68,9 @@ export default function AgentRoleRunner({ role, roleLabel, onRoleUpdate, onSpeak
     if (wasSpeakingRef.current && !nowSpeaking) onAutoAdvance?.();
     wasSpeakingRef.current = nowSpeaking;
   }
-  const { speaking, play, stop } = useSpeech(handleSpeakingChange);
+  const speech = useSpeech(handleSpeakingChange);
+  const { speaking, play, stop } = speech;
+  const interjection = useAgentInterjection(speech, role.id, { accent: role.agentAccent, gender: role.agentGender });
   const speechText = agentResultSpeechText(result);
 
   async function run() {
@@ -161,12 +163,15 @@ export default function AgentRoleRunner({ role, roleLabel, onRoleUpdate, onSpeak
       {speechAnalysis ? (
         <SpeechAnalysisResult
           analysis={speechAnalysis} onRecordAgain={run} onSpeakingChange={handleSpeakingChange} autoPlay={shouldAutoPlay}
-          agentGender={role.agentGender} agentAccent={role.agentAccent}
+          agentGender={role.agentGender} agentAccent={role.agentAccent} roleId={role.id}
         />
       ) : (
         <div className="flex flex-col gap-3">
           {speechText && (
-            <div className="flex justify-end">
+            <div className="flex justify-end items-center gap-2">
+              {speaking && (
+                <InterruptButton state={interjection.state} onPressStart={interjection.pressStart} onPressEnd={interjection.pressEnd} />
+              )}
               <SpeakButton speaking={speaking} onToggle={() => (speaking ? stop() : play(speechText, { accent: role.agentAccent, gender: role.agentGender }))} />
             </div>
           )}

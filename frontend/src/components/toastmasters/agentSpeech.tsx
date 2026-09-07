@@ -1,11 +1,15 @@
 // src/components/toastmasters/agentSpeech.tsx — read AI Agent output aloud using the
 // browser's built-in SpeechSynthesis API. Free, no backend call, no API key — the
 // same "free, browser-native" approach VoiceRecorder.tsx already uses for recording.
-import { useEffect, useState } from 'react';
-import { Volume2, VolumeX } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Mic, Volume2, VolumeX } from 'lucide-react';
+import { rolesApi } from '../../services/toastmasters';
 import type { TmAgentAccent, TmAgentGender } from '../../services/toastmasters';
 
 export const canSpeak = typeof window !== 'undefined' && 'speechSynthesis' in window;
+
+const SpeechRecognitionCtor: any = typeof window !== 'undefined' ? ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition) : undefined;
+export const canListen = !!SpeechRecognitionCtor;
 
 export interface VoicePersona { accent?: TmAgentAccent | null; gender?: TmAgentGender | null }
 
@@ -84,6 +88,11 @@ export function agentResultSpeechText(result: unknown): string | null {
  */
 export function useSpeech(onSpeakingChange?: (speaking: boolean) => void) {
   const [speaking, setSpeaking] = useState(false);
+  const [listening, setListening] = useState(false);
+  const currentTextRef = useRef('');
+  const charIndexRef = useRef(0);
+  const recognitionRef = useRef<any>(null);
+  const finalTranscriptRef = useRef('');
 
   function setSpeakingState(value: boolean) {
     setSpeaking(value);
@@ -93,15 +102,19 @@ export function useSpeech(onSpeakingChange?: (speaking: boolean) => void) {
   // Stop speaking if this card unmounts (e.g. navigating away mid-speech).
   useEffect(() => () => {
     if (canSpeak) window.speechSynthesis.cancel();
+    recognitionRef.current?.stop();
   }, []);
 
   function play(text: string, persona?: VoicePersona) {
     if (!canSpeak || !text.trim()) return;
     window.speechSynthesis.cancel(); // only one voice should speak at a time
+    currentTextRef.current = text;
+    charIndexRef.current = 0;
     const utterance = new SpeechSynthesisUtterance(text);
     const voice = pickVoice(persona);
     if (voice) utterance.voice = voice;
     utterance.lang = persona?.accent === 'UK' ? 'en-GB' : persona?.accent === 'US' ? 'en-US' : voice?.lang ?? utterance.lang;
+    utterance.onboundary = (e) => { charIndexRef.current = e.charIndex; };
     utterance.onend = () => setSpeakingState(false);
     utterance.onerror = () => setSpeakingState(false);
     window.speechSynthesis.speak(utterance);
@@ -113,7 +126,100 @@ export function useSpeech(onSpeakingChange?: (speaking: boolean) => void) {
     setSpeakingState(false);
   }
 
-  return { speaking, play, stop };
+  /** Push-to-talk press: cancel speech immediately and start listening for what the
+   * interrupting member says. Returns how much of the speech had already played, so
+   * the AI's reply can be grounded in what it was actually saying when cut off. */
+  function beginInterrupt(): { spokenSoFar: string; fullText: string } {
+    const spokenSoFar = currentTextRef.current.slice(0, charIndexRef.current || currentTextRef.current.length);
+    const fullText = currentTextRef.current;
+    window.speechSynthesis.cancel();
+    setSpeakingState(false);
+    if (canListen) {
+      const recognition = new SpeechRecognitionCtor();
+      recognition.lang = 'en-US';
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+      finalTranscriptRef.current = '';
+      recognition.onresult = (e: any) => {
+        finalTranscriptRef.current = Array.from(e.results as any).map((r: any) => r[0].transcript).join(' ');
+      };
+      recognitionRef.current = recognition;
+      try { recognition.start(); setListening(true); } catch { setListening(false); }
+    }
+    return { spokenSoFar, fullText };
+  }
+
+  /** Push-to-talk release: stop listening and resolve with whatever was transcribed. */
+  function endInterrupt(): Promise<string> {
+    return new Promise((resolve) => {
+      const recognition = recognitionRef.current;
+      if (!recognition) { setListening(false); resolve(''); return; }
+      recognition.onend = () => { setListening(false); resolve(finalTranscriptRef.current.trim()); };
+      recognition.onerror = () => { setListening(false); resolve(finalTranscriptRef.current.trim()); };
+      recognition.stop();
+    });
+  }
+
+  return { speaking, play, stop, listening, beginInterrupt, endInterrupt };
+}
+
+/**
+ * Orchestrates a full push-to-talk interruption turn on top of useSpeech: hold →
+ * cancel the agent's speech and listen, release → send what was said (plus how far
+ * the agent had gotten) to the agent's interrupt endpoint, then speak its reply.
+ * Silently gives up if speech recognition isn't supported or nothing was heard —
+ * interrupting is a nice-to-have, never worth surfacing an error over.
+ */
+export function useAgentInterjection(speech: Pick<ReturnType<typeof useSpeech>, 'beginInterrupt' | 'endInterrupt' | 'play'>, roleId: string, persona?: VoicePersona) {
+  const [state, setState] = useState<'idle' | 'listening' | 'thinking'>('idle');
+  const ctxRef = useRef<{ spokenSoFar: string } | null>(null);
+
+  function pressStart() {
+    ctxRef.current = speech.beginInterrupt();
+    setState('listening');
+  }
+
+  async function pressEnd() {
+    if (state !== 'listening') return;
+    const userSaid = await speech.endInterrupt();
+    if (!userSaid) { setState('idle'); return; }
+    setState('thinking');
+    try {
+      const { reply } = await rolesApi.interrupt(roleId, { spokenSoFar: ctxRef.current?.spokenSoFar ?? '', userSaid });
+      if (reply) speech.play(reply, persona);
+    } catch {
+      // best-effort — don't surface a toast over a missed interruption
+    } finally {
+      setState('idle');
+    }
+  }
+
+  return { state, pressStart, pressEnd };
+}
+
+export function InterruptButton({ state, onPressStart, onPressEnd, className = '' }: {
+  state: 'idle' | 'listening' | 'thinking';
+  onPressStart: () => void;
+  onPressEnd: () => void;
+  className?: string;
+}) {
+  if (!canListen) return null;
+  return (
+    <button
+      type="button"
+      disabled={state === 'thinking'}
+      onMouseDown={onPressStart}
+      onMouseUp={onPressEnd}
+      onMouseLeave={() => state === 'listening' && onPressEnd()}
+      onTouchStart={(e) => { e.preventDefault(); onPressStart(); }}
+      onTouchEnd={(e) => { e.preventDefault(); onPressEnd(); }}
+      className={`inline-flex items-center gap-1 text-xs font-semibold rounded-full px-2 py-1 transition-colors select-none ${
+        state === 'listening' ? 'bg-red-100 text-red-700' : state === 'thinking' ? 'bg-amber-100 text-amber-700' : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
+      } ${className}`}
+    >
+      <Mic size={13} /> {state === 'listening' ? 'Listening… release to send' : state === 'thinking' ? 'Thinking…' : 'Hold to interrupt'}
+    </button>
+  );
 }
 
 export function SpeakButton({ speaking, onToggle, label = 'Listen', className = '' }: {

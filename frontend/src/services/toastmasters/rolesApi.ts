@@ -32,4 +32,13 @@ export const rolesApi = {
     const res = await tm.post(`/toastmasters/roles/${roleId}/run-agent`, {});
     return { role: res.data.role, result: res.data.result, usage: res.data.usage };
   },
+  /** Push-to-talk interrupt: a member spoke while this agent was mid-speech — send
+   * what the agent had already said plus what the member said, get a brief
+   * in-character reply back. */
+  interrupt: async (roleId: string, data: { spokenSoFar: string; userSaid: string }): Promise<{
+    reply: string; usage: { inputTokens: number; outputTokens: number; costUsd: number };
+  }> => {
+    const res = await tm.post(`/toastmasters/roles/${roleId}/interrupt`, data);
+    return { reply: res.data.reply, usage: res.data.usage };
+  },
 };

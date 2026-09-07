@@ -6,7 +6,7 @@ import { authenticate } from '../../middleware/auth';
 import { AppError } from '../../middleware/errorHandler';
 import {
   analyzeSpeech, computeAgentCostUsd, generateAgentEvaluation, generateAgentGeneralEvaluation,
-  generateAgentGrammarianReport, generateAgentSpeech, generateAgentTableTopics,
+  generateAgentGrammarianReport, generateAgentInterjectionReply, generateAgentSpeech, generateAgentTableTopics,
 } from '../../services/ai.service';
 import type { AgentUsage } from '../../services/ai.service';
 import { TM_SPEAKER_EVALUATOR_PAIRS } from './helpers';
@@ -234,6 +234,44 @@ router.post('/roles/:roleId/run-agent', async (req, res, next) => {
     if (roleId) {
       await prisma.tmRoleAssignment.update({ where: { id: roleId }, data: { agentStatus: 'FAILED' } }).catch(() => {});
     }
+    next(err);
+  }
+});
+
+// POST /api/toastmasters/roles/:roleId/interrupt — a member in the room interrupted
+// this AI agent mid-speech (push-to-talk "Interrupt" button); generate a brief
+// in-character reply to what they said.
+router.post('/roles/:roleId/interrupt', async (req, res, next) => {
+  try {
+    const { spokenSoFar, userSaid } = req.body as { spokenSoFar?: string; userSaid?: string };
+    if (!userSaid || !userSaid.trim()) throw new AppError(400, 'No interjection text was captured');
+
+    const role = await prisma.tmRoleAssignment.findFirst({
+      where: { id: req.params.roleId, meeting: { organizationId: req.user!.organizationId } },
+      include: { meeting: true },
+    });
+    if (!role) throw new AppError(404, 'Role not found');
+    if (role.assigneeType !== 'AI_AGENT') throw new AppError(400, 'This role is not assigned to an AI agent');
+
+    const { reply, usage } = await generateAgentInterjectionReply({
+      roleName: role.roleName,
+      spokenSoFar: spokenSoFar ?? '',
+      userSaid,
+      wordOfDay: role.meeting.wordOfDay ?? undefined,
+    });
+
+    const costUsd = computeAgentCostUsd(usage);
+    await prisma.tmMeeting.update({
+      where: { id: role.meetingId },
+      data: {
+        agentInputTokens: { increment: usage.inputTokens },
+        agentOutputTokens: { increment: usage.outputTokens },
+        agentCostUsd: { increment: costUsd },
+      },
+    });
+
+    res.json({ success: true, reply, usage: { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, costUsd } });
+  } catch (err) {
     next(err);
   }
 });
