@@ -8,7 +8,7 @@ import { TM_NAVY } from './theme';
 import { extractError } from '../../services/api';
 import { speechAnalysisApi, evaluationsApi, rolesApi, TM_SPEAKER_EVALUATOR_PAIRS } from '../../services/toastmasters';
 import type { TmRoleAssignment, TmSpeechAnalysis } from '../../services/toastmasters';
-import { agentResultSpeechText, InterruptButton, SpeakButton, useAgentInterjection, useSpeech } from './agentSpeech';
+import { agentResultSpeechText, AgentListeningStatus, SpeakButton, useAgentInterjection, useSpeech } from './agentSpeech';
 
 const STATUS_LABEL: Record<string, string> = { PENDING: 'Not run yet', RUNNING: 'Running…', DONE: 'Done', FAILED: 'Failed — try again' };
 const SPEAKER_ROLES = new Set(TM_SPEAKER_EVALUATOR_PAIRS.map(([s]) => s));
@@ -169,9 +169,7 @@ export default function AgentRoleRunner({ role, roleLabel, onRoleUpdate, onSpeak
         <div className="flex flex-col gap-3">
           {speechText && (
             <div className="flex justify-end items-center gap-2">
-              {(speaking || interjection.state !== 'idle') && (
-                <InterruptButton state={interjection.state} onPressStart={interjection.pressStart} onPressEnd={interjection.pressEnd} />
-              )}
+              <AgentListeningStatus state={interjection.state} />
               <SpeakButton speaking={speaking} onToggle={() => (speaking ? stop() : play(speechText, { accent: role.agentAccent, gender: role.agentGender }))} />
             </div>
           )}

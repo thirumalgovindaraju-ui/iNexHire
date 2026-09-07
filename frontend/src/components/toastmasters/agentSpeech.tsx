@@ -88,12 +88,15 @@ export function agentResultSpeechText(result: unknown): string | null {
  */
 export function useSpeech(onSpeakingChange?: (speaking: boolean) => void) {
   const [speaking, setSpeaking] = useState(false);
-  const [listening, setListening] = useState(false);
   const currentTextRef = useRef('');
   const charIndexRef = useRef(0);
-  const recognitionRef = useRef<any>(null);
-  const finalTranscriptRef = useRef('');
   const keepAliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Set right before a deliberate interrupt()-triggered cancel — lets the utterance's
+  // own (async) onerror recognize "this cancellation was expected" and skip notifying
+  // onSpeakingChange a second time, so callers watching for "this role's turn is over"
+  // (e.g. Auto-Play Show advancing to the next agenda item) don't mistake a brief pause
+  // to listen for an interruption for the speech actually having ended.
+  const suppressNextErrorNotifyRef = useRef(false);
 
   function setSpeakingState(value: boolean) {
     setSpeaking(value);
@@ -107,12 +110,12 @@ export function useSpeech(onSpeakingChange?: (speaking: boolean) => void) {
   // Stop speaking if this card unmounts (e.g. navigating away mid-speech).
   useEffect(() => () => {
     if (canSpeak) window.speechSynthesis.cancel();
-    recognitionRef.current?.stop();
     stopKeepAlive();
   }, []);
 
   function play(text: string, persona?: VoicePersona, onDone?: () => void) {
     if (!canSpeak || !text.trim()) return;
+    suppressNextErrorNotifyRef.current = false;
     window.speechSynthesis.cancel(); // only one voice should speak at a time
     stopKeepAlive();
     currentTextRef.current = text;
@@ -123,7 +126,12 @@ export function useSpeech(onSpeakingChange?: (speaking: boolean) => void) {
     utterance.lang = persona?.accent === 'UK' ? 'en-GB' : persona?.accent === 'US' ? 'en-US' : voice?.lang ?? utterance.lang;
     utterance.onboundary = (e) => { charIndexRef.current = e.charIndex; };
     utterance.onend = () => { stopKeepAlive(); setSpeakingState(false); onDone?.(); };
-    utterance.onerror = () => { stopKeepAlive(); setSpeakingState(false); };
+    utterance.onerror = () => {
+      stopKeepAlive();
+      setSpeaking(false);
+      if (!suppressNextErrorNotifyRef.current) onSpeakingChange?.(false);
+      suppressNextErrorNotifyRef.current = false;
+    };
     window.speechSynthesis.speak(utterance);
     setSpeakingState(true);
     // Chrome silently stops producing audio ~15s into a long utterance (the
@@ -142,10 +150,13 @@ export function useSpeech(onSpeakingChange?: (speaking: boolean) => void) {
     setSpeakingState(false);
   }
 
-  /** Push-to-talk press: cancel speech immediately and start listening for what the
-   * interrupting member says. Returns how much of the speech had already played, so
-   * the AI's reply can be grounded in what it was actually saying when cut off. */
-  function beginInterrupt(): { spokenSoFar: string; fullText: string } {
+  /** Cancels whatever's currently playing to listen for an interruption, and reports
+   * how much had already been said — so a reply to the interruption can be grounded in
+   * what the agent was actually saying, and the rest can be resumed from that point
+   * afterward. Deliberately updates local `speaking` state (for this component's own
+   * UI) without notifying onSpeakingChange — this is a momentary pause, not the turn
+   * genuinely ending. */
+  function interrupt(): { spokenSoFar: string; fullText: string } {
     // charIndexRef.current is 0 both genuinely at the very start of the speech and
     // whenever no onboundary event has fired yet (interrupting within the first
     // instant, which is the common case) — treat it as "nothing spoken yet" rather
@@ -153,78 +164,93 @@ export function useSpeech(onSpeakingChange?: (speaking: boolean) => void) {
     // look like the agent had already finished, leaving nothing to resume afterward.
     const spokenSoFar = currentTextRef.current.slice(0, charIndexRef.current);
     const fullText = currentTextRef.current;
+    suppressNextErrorNotifyRef.current = true;
     stopKeepAlive();
     window.speechSynthesis.cancel();
-    setSpeakingState(false);
-    if (canListen) {
-      const recognition = new SpeechRecognitionCtor();
-      recognition.lang = 'en-US';
-      recognition.interimResults = false;
-      recognition.maxAlternatives = 1;
-      finalTranscriptRef.current = '';
-      recognition.onresult = (e: any) => {
-        finalTranscriptRef.current = Array.from(e.results as any).map((r: any) => r[0].transcript).join(' ');
-      };
-      recognitionRef.current = recognition;
-      try { recognition.start(); setListening(true); } catch { setListening(false); }
-    }
+    setSpeaking(false);
     return { spokenSoFar, fullText };
   }
 
-  /** Push-to-talk release: stop listening and resolve with whatever was transcribed. */
-  function endInterrupt(): Promise<string> {
-    return new Promise((resolve) => {
-      const recognition = recognitionRef.current;
-      if (!recognition) { setListening(false); resolve(''); return; }
-      recognition.onend = () => { setListening(false); resolve(finalTranscriptRef.current.trim()); };
-      recognition.onerror = () => { setListening(false); resolve(finalTranscriptRef.current.trim()); };
-      recognition.stop();
-    });
-  }
-
-  return { speaking, play, stop, listening, beginInterrupt, endInterrupt };
+  return { speaking, play, stop, interrupt };
 }
 
 /**
- * Orchestrates a full push-to-talk interruption turn on top of useSpeech: hold →
- * cancel the agent's speech and listen, release → send what was said (plus how far
- * the agent had gotten) to the agent's interrupt endpoint, then speak its reply.
+ * Keeps the mic continuously listening in the background for as long as the agent
+ * is speaking (see useEffect below) — no button to hold. The moment it hears a
+ * finished phrase, it cuts the agent off, sends what was said (plus how far the
+ * agent had gotten) to the agent's interrupt endpoint, and speaks its reply.
  * The endpoint also classifies intent — if you told it to stop, that's the end of
  * its turn; for anything else (a question, a comment, "repeat that") it picks the
  * original speech back up from exactly where it left off after answering, the way
  * a real person resumes after a genuine aside rather than abandoning their point.
  * Silently gives up if speech recognition isn't supported or nothing was heard —
  * interrupting is a nice-to-have, never worth surfacing an error over.
+ *
+ * Caveat: the browser's recognizer has no guaranteed echo cancellation against this
+ * page's own TTS output, so on speakers (rather than headphones) it can occasionally
+ * pick up the agent's own voice as an "interruption" — an accepted trade-off for not
+ * requiring a manual push-to-talk button.
  */
-export function useAgentInterjection(speech: Pick<ReturnType<typeof useSpeech>, 'beginInterrupt' | 'endInterrupt' | 'play'>, roleId: string, persona?: VoicePersona) {
+export function useAgentInterjection(speech: Pick<ReturnType<typeof useSpeech>, 'speaking' | 'interrupt' | 'play'>, roleId: string, persona?: VoicePersona) {
   const [state, setState] = useState<'idle' | 'listening' | 'thinking'>('idle');
   const ctxRef = useRef<{ spokenSoFar: string; fullText: string } | null>(null);
+  const recognitionRef = useRef<any>(null);
+  const wantListeningRef = useRef(false);
 
-  function pressStart() {
-    ctxRef.current = speech.beginInterrupt();
-    setState('listening');
+  function stopListening() {
+    wantListeningRef.current = false;
+    const recognition = recognitionRef.current;
+    if (recognition) {
+      recognition.onend = null;
+      recognition.onresult = null;
+      recognition.onerror = null;
+      try { recognition.stop(); } catch { /* already stopped */ }
+      recognitionRef.current = null;
+    }
+    setState((s) => (s === 'listening' ? 'idle' : s));
   }
 
-  /** Nothing usable came back (no speech captured, the interrupt call failed, or the
-   * agent had no reply) — pick the original speech back up rather than leaving the
-   * agent silent forever just because the interruption attempt itself fizzled. */
+  function startListening() {
+    if (!canListen || wantListeningRef.current) return;
+    wantListeningRef.current = true;
+    const recognition = new SpeechRecognitionCtor();
+    recognition.lang = 'en-US';
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    recognition.onresult = (e: any) => {
+      const text = Array.from(e.results as any).slice(e.resultIndex).map((r: any) => r[0].transcript).join(' ').trim();
+      if (text) handleHeard(text);
+    };
+    recognition.onerror = () => { /* e.g. transient "no-speech" — onend below restarts it */ };
+    recognition.onend = () => {
+      // Chrome ends a "continuous" session after a stretch of silence regardless —
+      // keep it running for as long as we still want to be listening.
+      if (wantListeningRef.current && recognitionRef.current === recognition) {
+        try { recognition.start(); } catch { /* ignore — will retry on the next onend */ }
+      }
+    };
+    recognitionRef.current = recognition;
+    try { recognition.start(); setState('listening'); } catch { wantListeningRef.current = false; recognitionRef.current = null; }
+  }
+
+  /** Nothing usable came back (the interrupt call failed, or the agent had no
+   * reply) — pick the original speech back up rather than leaving the agent
+   * silent forever just because the interruption attempt itself fizzled. */
   function resumeOriginal() {
     const ctx = ctxRef.current;
     const remainder = ctx ? ctx.fullText.slice(ctx.spokenSoFar.length).trim() : '';
     if (remainder) speech.play(remainder, persona);
   }
 
-  async function pressEnd() {
-    if (state !== 'listening') return;
-    const userSaid = await speech.endInterrupt();
-    if (!userSaid) { setState('idle'); resumeOriginal(); return; }
+  async function handleHeard(userSaid: string) {
+    stopListening();
+    ctxRef.current = speech.interrupt();
     setState('thinking');
     try {
-      const { reply, action } = await rolesApi.interrupt(roleId, { spokenSoFar: ctxRef.current?.spokenSoFar ?? '', userSaid });
+      const { reply, action } = await rolesApi.interrupt(roleId, { spokenSoFar: ctxRef.current.spokenSoFar, userSaid });
       if (!reply) { resumeOriginal(); return; }
-      const remainder = action === 'RESUME'
-        ? ctxRef.current?.fullText.slice((ctxRef.current?.spokenSoFar ?? '').length).trim()
-        : '';
+      const remainder = action === 'RESUME' ? ctxRef.current.fullText.slice(ctxRef.current.spokenSoFar.length).trim() : '';
       speech.play(reply, persona, remainder ? () => speech.play(remainder, persona) : undefined);
     } catch {
       // API call itself failed — still resume rather than leaving the agent silent
@@ -234,31 +260,31 @@ export function useAgentInterjection(speech: Pick<ReturnType<typeof useSpeech>, 
     }
   }
 
-  return { state, pressStart, pressEnd };
+  // Listen for as long as (and only while) the agent is actually speaking.
+  useEffect(() => {
+    if (speech.speaking) startListening(); else stopListening();
+    return stopListening;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [speech.speaking]);
+
+  return { state };
 }
 
-export function InterruptButton({ state, onPressStart, onPressEnd, className = '' }: {
+/** Passive status badge — there's nothing to click; the agent listens on its own
+ * whenever it's speaking (see useAgentInterjection above). */
+export function AgentListeningStatus({ state, className = '' }: {
   state: 'idle' | 'listening' | 'thinking';
-  onPressStart: () => void;
-  onPressEnd: () => void;
   className?: string;
 }) {
-  if (!canListen) return null;
+  if (!canListen || state === 'idle') return null;
   return (
-    <button
-      type="button"
-      disabled={state === 'thinking'}
-      onMouseDown={onPressStart}
-      onMouseUp={onPressEnd}
-      onMouseLeave={() => state === 'listening' && onPressEnd()}
-      onTouchStart={(e) => { e.preventDefault(); onPressStart(); }}
-      onTouchEnd={(e) => { e.preventDefault(); onPressEnd(); }}
-      className={`inline-flex items-center gap-1 text-xs font-semibold rounded-full px-2 py-1 transition-colors select-none ${
-        state === 'listening' ? 'bg-red-100 text-red-700' : state === 'thinking' ? 'bg-amber-100 text-amber-700' : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
+    <span
+      className={`inline-flex items-center gap-1 text-xs font-semibold rounded-full px-2 py-1 select-none ${
+        state === 'listening' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
       } ${className}`}
     >
-      <Mic size={13} /> {state === 'listening' ? 'Listening… release to send' : state === 'thinking' ? 'Thinking…' : 'Hold to interrupt'}
-    </button>
+      <Mic size={13} /> {state === 'listening' ? 'Listening for interruptions…' : 'Thinking…'}
+    </span>
   );
 }
 

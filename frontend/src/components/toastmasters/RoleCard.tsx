@@ -7,7 +7,7 @@ import { extractError } from '../../services/api';
 import { TM_NAVY } from './theme';
 import { TM_ROLE_LABELS, TM_SPEAKER_EVALUATOR_PAIRS, rolesApi } from '../../services/toastmasters';
 import type { TmAgentAccent, TmAgentGender, TmAssigneeType, TmMember, TmRoleAssignment, UpdateRoleInput } from '../../services/toastmasters';
-import { agentResultSpeechText, InterruptButton, SpeakButton, useAgentInterjection, useSpeech } from './agentSpeech';
+import { agentResultSpeechText, AgentListeningStatus, SpeakButton, useAgentInterjection, useSpeech } from './agentSpeech';
 import { TalkingAvatar } from './TalkingAvatar';
 
 const SPEAKER_ROLES = new Set(TM_SPEAKER_EVALUATOR_PAIRS.map(([s]) => s));
@@ -187,9 +187,7 @@ export default function RoleCard({ role, members, excludeMemberIds, onSave, onAg
                 <div className="flex items-center justify-between mb-1">
                   <Badge variant="purple">{role.agentStatus === 'DONE' ? 'Generated' : 'Result'}</Badge>
                   <div className="flex items-center gap-2">
-                    {(speaking || interjection.state !== 'idle') && (
-                      <InterruptButton state={interjection.state} onPressStart={interjection.pressStart} onPressEnd={interjection.pressEnd} />
-                    )}
+                    <AgentListeningStatus state={interjection.state} />
                     {speechText && (
                       <SpeakButton speaking={speaking} onToggle={() => (speaking ? stop() : play(speechText, { accent: agentAccent, gender: agentGender }))} />
                     )}

@@ -5,7 +5,7 @@ import { Badge, Button, useToast } from '../ui';
 import { highlightFillerWords } from './highlightFillers';
 import { TM_FILLER_LABELS, TM_FILLER_WORDS } from '../../services/toastmasters';
 import type { TmAgentAccent, TmAgentGender, TmSpeechAnalysis } from '../../services/toastmasters';
-import { InterruptButton, SpeakButton, useAgentInterjection, useSpeech } from './agentSpeech';
+import { AgentListeningStatus, SpeakButton, useAgentInterjection, useSpeech } from './agentSpeech';
 
 function scoreColor(score: number, max: number) {
   const pct = score / max;
@@ -171,9 +171,7 @@ export default function SpeechAnalysisResult({ analysis, onRecordAgain, onSpeaki
         <div className="flex items-center justify-between mb-2">
           <p className="text-xs font-semibold uppercase text-surface-500">Transcript</p>
           <div className="flex items-center gap-2">
-            {roleId && (speaking || interjection.state !== 'idle') && (
-              <InterruptButton state={interjection.state} onPressStart={interjection.pressStart} onPressEnd={interjection.pressEnd} />
-            )}
+            {roleId && <AgentListeningStatus state={interjection.state} />}
             <SpeakButton speaking={speaking} onToggle={() => (speaking ? stop() : play(analysis.transcript, { accent: agentAccent, gender: agentGender }))} label="Listen to speech" />
           </div>
         </div>
