@@ -183,6 +183,11 @@ export function useSpeech(onSpeakingChange?: (speaking: boolean) => void) {
  * its turn; for anything else (a question, a comment, "repeat that") it picks the
  * original speech back up from exactly where it left off after answering, the way
  * a real person resumes after a genuine aside rather than abandoning their point.
+ * Because listening stays on for as long as the agent is talking — including while
+ * it's mid-reply — you can keep interrupting again with a follow-up and it stays a
+ * real back-and-forth: each reply is sent the transcript of the exchange so far, and
+ * "resume" always tracks the true position in the ORIGINAL speech (not wherever the
+ * most recent reply happened to be), so a chain of follow-ups never loses the plot.
  * Silently gives up if speech recognition isn't supported or nothing was heard —
  * interrupting is a nice-to-have, never worth surfacing an error over.
  *
@@ -193,9 +198,18 @@ export function useSpeech(onSpeakingChange?: (speaking: boolean) => void) {
  */
 export function useAgentInterjection(speech: Pick<ReturnType<typeof useSpeech>, 'speaking' | 'interrupt' | 'play'>, roleId: string, persona?: VoicePersona) {
   const [state, setState] = useState<'idle' | 'listening' | 'thinking'>('idle');
-  const ctxRef = useRef<{ spokenSoFar: string; fullText: string } | null>(null);
   const recognitionRef = useRef<any>(null);
   const wantListeningRef = useRef(false);
+  // Where we really are in the ORIGINAL speech — only ever updated while the thing
+  // that just got cut off WAS the original speech (see speakingOriginalRef below),
+  // so interrupting again mid-reply can't corrupt the position to resume from.
+  const baseRef = useRef<{ spokenSoFar: string; fullText: string } | null>(null);
+  const speakingOriginalRef = useRef(true);
+  // What triggered the play() call that's about to start, so the effect below can
+  // tell "the component started a brand new speech" apart from "we ourselves just
+  // queued the reply/remainder" without needing play() itself to say why.
+  const nextPlayIsRef = useRef<'reply' | 'remainder' | null>(null);
+  const historyRef = useRef<{ userSaid: string; reply: string }[]>([]);
 
   function stopListening() {
     wantListeningRef.current = false;
@@ -234,24 +248,44 @@ export function useAgentInterjection(speech: Pick<ReturnType<typeof useSpeech>, 
     try { recognition.start(); setState('listening'); } catch { wantListeningRef.current = false; recognitionRef.current = null; }
   }
 
+  function playReply(text: string, onDone?: () => void) {
+    nextPlayIsRef.current = 'reply';
+    speech.play(text, persona, onDone);
+  }
+
+  function playRemainder(text: string) {
+    nextPlayIsRef.current = 'remainder';
+    speech.play(text, persona);
+  }
+
   /** Nothing usable came back (the interrupt call failed, or the agent had no
    * reply) — pick the original speech back up rather than leaving the agent
    * silent forever just because the interruption attempt itself fizzled. */
   function resumeOriginal() {
-    const ctx = ctxRef.current;
-    const remainder = ctx ? ctx.fullText.slice(ctx.spokenSoFar.length).trim() : '';
-    if (remainder) speech.play(remainder, persona);
+    const base = baseRef.current;
+    const remainder = base ? base.fullText.slice(base.spokenSoFar.length).trim() : '';
+    if (remainder) playRemainder(remainder);
   }
 
   async function handleHeard(userSaid: string) {
     stopListening();
-    ctxRef.current = speech.interrupt();
+    const ctx = speech.interrupt();
+    // Only refresh the tracked "true" position if what just got cut off actually
+    // was the original speech — if it was a reply we're already mid-follow-up on,
+    // baseRef correctly stays at wherever the original speech last paused.
+    if (speakingOriginalRef.current) baseRef.current = ctx;
+    const base = baseRef.current ?? ctx;
     setState('thinking');
     try {
-      const { reply, action } = await rolesApi.interrupt(roleId, { spokenSoFar: ctxRef.current.spokenSoFar, userSaid });
+      const { reply, action } = await rolesApi.interrupt(roleId, {
+        spokenSoFar: base.spokenSoFar,
+        userSaid,
+        history: historyRef.current,
+      });
       if (!reply) { resumeOriginal(); return; }
-      const remainder = action === 'RESUME' ? ctxRef.current.fullText.slice(ctxRef.current.spokenSoFar.length).trim() : '';
-      speech.play(reply, persona, remainder ? () => speech.play(remainder, persona) : undefined);
+      historyRef.current = [...historyRef.current, { userSaid, reply }];
+      const remainder = action === 'RESUME' ? base.fullText.slice(base.spokenSoFar.length).trim() : '';
+      playReply(reply, remainder ? () => playRemainder(remainder) : undefined);
     } catch {
       // API call itself failed — still resume rather than leaving the agent silent
       resumeOriginal();
@@ -260,10 +294,28 @@ export function useAgentInterjection(speech: Pick<ReturnType<typeof useSpeech>, 
     }
   }
 
-  // Listen for as long as (and only while) the agent is actually speaking.
+  // Listen for as long as (and only while) the agent is actually speaking —
+  // including while it's speaking its own reply, so a follow-up can interrupt that
+  // too and keep the exchange going.
   useEffect(() => {
-    if (speech.speaking) startListening(); else stopListening();
-    return stopListening;
+    if (speech.speaking) {
+      const trigger = nextPlayIsRef.current;
+      nextPlayIsRef.current = null;
+      if (trigger === 'reply') {
+        speakingOriginalRef.current = false;
+      } else if (trigger === 'remainder') {
+        speakingOriginalRef.current = true;
+      } else {
+        // Nothing we queued started this — the component itself just began a brand
+        // new, unrelated speech (a fresh agent run, "Listen" replay, etc.). Reset.
+        speakingOriginalRef.current = true;
+        baseRef.current = null;
+        historyRef.current = [];
+      }
+      startListening();
+    } else {
+      stopListening();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [speech.speaking]);
 

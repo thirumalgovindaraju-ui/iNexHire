@@ -1939,34 +1939,46 @@ Return ONLY valid JSON in this exact shape, no other text:
 }
 
 /**
- * A member in the room interrupted this agent mid-speech (push-to-talk "Interrupt"
- * button, see frontend agentSpeech.tsx) — generate a brief, natural, in-character
- * reply to what they said, the way a real person would respond to being interrupted,
- * rather than the agent silently resuming or ignoring them.
+ * A member in the room interrupted this agent mid-speech (it listens continuously
+ * while speaking, see frontend agentSpeech.tsx) — generate a brief, natural,
+ * in-character reply to what they said, the way a real person would respond to being
+ * interrupted, rather than the agent silently resuming or ignoring them. Because
+ * listening stays on through the agent's own reply, this can be called again for a
+ * follow-up in the same exchange — `history` carries that earlier back-and-forth so
+ * the reply stays coherent with what was already asked and answered.
  */
 export async function generateAgentInterjectionReply(params: {
   roleName: string;
   spokenSoFar: string;
   userSaid: string;
+  history?: { userSaid: string; reply: string }[];
   wordOfDay?: string;
 }): Promise<{ reply: string; action: 'STOP' | 'RESUME'; usage: AgentUsage }> {
+  const historyBlock = params.history?.length
+    ? `\nEarlier in this same exchange, before this latest thing they said:\n${params.history
+      .map((h, i) => `${i + 1}. Member: "${h.userSaid}"\n   You: "${h.reply}"`)
+      .join('\n')}\n`
+    : '';
+
   const prompt = `You are an experienced Toastmasters club member currently mid-speech at a club meeting, fulfilling the "${params.roleName}" role.
 
-You were just interrupted by a fellow member in the room, right after you had said:
+You were interrupted by a fellow member in the room, right after you had said:
 "...${params.spokenSoFar.slice(-400)}"
-
+${historyBlock}
 They just said to you: "${params.userSaid}"
 
-Respond the way a real person would when interrupted mid-sentence — briefly acknowledge them, answer directly if it's
-a question, and comply naturally if they're asking you to stop, wait, hold on, or be quiet. Stay in character for your
-role. Keep it to 1-3 short sentences in natural spoken cadence, not a written paragraph.
+Respond the way a real person would in a live back-and-forth — briefly acknowledge them, answer directly if it's a
+question (building naturally on the earlier exchange above if this is a follow-up, not repeating yourself), and
+comply naturally if they're asking you to stop, wait, hold on, or be quiet. Stay in character for your role. Keep it
+to 1-3 short sentences in natural spoken cadence, not a written paragraph.
 
 Then decide what happens next:
 - If they told you to stop, wait, pause, hold on, or otherwise end your turn, set "action" to "STOP" — you will not
   continue speaking after this reply.
 - Otherwise (a question, a comment, a request to repeat/clarify something, encouragement, etc.) set "action" to
   "RESUME" — after this reply, you will pick your speech back up from exactly where you left off, so your reply
-  should read as a genuine aside before continuing, not a wrap-up.
+  should read as a genuine aside before continuing, not a wrap-up. They may interrupt again with a follow-up while
+  you're giving this reply, so answer this one thing well rather than trying to preempt what they might ask next.
 
 Return ONLY valid JSON in this exact shape, no other text:
 { "reply": "<your brief spoken response>", "action": "STOP" | "RESUME" }`;

@@ -239,11 +239,15 @@ router.post('/roles/:roleId/run-agent', async (req, res, next) => {
 });
 
 // POST /api/toastmasters/roles/:roleId/interrupt — a member in the room interrupted
-// this AI agent mid-speech (push-to-talk "Interrupt" button); generate a brief
-// in-character reply to what they said.
+// this AI agent mid-speech (it listens continuously while speaking, see frontend
+// agentSpeech.tsx); generate a brief in-character reply to what they said, aware of
+// any earlier back-and-forth in this same exchange so a follow-up isn't answered
+// out of context.
 router.post('/roles/:roleId/interrupt', async (req, res, next) => {
   try {
-    const { spokenSoFar, userSaid } = req.body as { spokenSoFar?: string; userSaid?: string };
+    const { spokenSoFar, userSaid, history } = req.body as {
+      spokenSoFar?: string; userSaid?: string; history?: { userSaid?: string; reply?: string }[];
+    };
     if (!userSaid || !userSaid.trim()) throw new AppError(400, 'No interjection text was captured');
 
     const role = await prisma.tmRoleAssignment.findFirst({
@@ -253,10 +257,20 @@ router.post('/roles/:roleId/interrupt', async (req, res, next) => {
     if (!role) throw new AppError(404, 'Role not found');
     if (role.assigneeType !== 'AI_AGENT') throw new AppError(400, 'This role is not assigned to an AI agent');
 
+    // Cap how much of the exchange gets replayed into the prompt — a long back-and-
+    // forth shouldn't grow the request without bound.
+    const boundedHistory = Array.isArray(history)
+      ? history
+        .filter((h) => h && typeof h.userSaid === 'string' && typeof h.reply === 'string')
+        .slice(-6)
+        .map((h) => ({ userSaid: h.userSaid!.slice(0, 500), reply: h.reply!.slice(0, 500) }))
+      : [];
+
     const { reply, action, usage } = await generateAgentInterjectionReply({
       roleName: role.roleName,
       spokenSoFar: spokenSoFar ?? '',
       userSaid,
+      history: boundedHistory,
       wordOfDay: role.meeting.wordOfDay ?? undefined,
     });
 
