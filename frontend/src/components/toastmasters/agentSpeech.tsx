@@ -146,7 +146,12 @@ export function useSpeech(onSpeakingChange?: (speaking: boolean) => void) {
    * interrupting member says. Returns how much of the speech had already played, so
    * the AI's reply can be grounded in what it was actually saying when cut off. */
   function beginInterrupt(): { spokenSoFar: string; fullText: string } {
-    const spokenSoFar = currentTextRef.current.slice(0, charIndexRef.current || currentTextRef.current.length);
+    // charIndexRef.current is 0 both genuinely at the very start of the speech and
+    // whenever no onboundary event has fired yet (interrupting within the first
+    // instant, which is the common case) — treat it as "nothing spoken yet" rather
+    // than falling back to the full text length, which would make an early interrupt
+    // look like the agent had already finished, leaving nothing to resume afterward.
+    const spokenSoFar = currentTextRef.current.slice(0, charIndexRef.current);
     const fullText = currentTextRef.current;
     stopKeepAlive();
     window.speechSynthesis.cancel();
@@ -200,20 +205,30 @@ export function useAgentInterjection(speech: Pick<ReturnType<typeof useSpeech>, 
     setState('listening');
   }
 
+  /** Nothing usable came back (no speech captured, the interrupt call failed, or the
+   * agent had no reply) — pick the original speech back up rather than leaving the
+   * agent silent forever just because the interruption attempt itself fizzled. */
+  function resumeOriginal() {
+    const ctx = ctxRef.current;
+    const remainder = ctx ? ctx.fullText.slice(ctx.spokenSoFar.length).trim() : '';
+    if (remainder) speech.play(remainder, persona);
+  }
+
   async function pressEnd() {
     if (state !== 'listening') return;
     const userSaid = await speech.endInterrupt();
-    if (!userSaid) { setState('idle'); return; }
+    if (!userSaid) { setState('idle'); resumeOriginal(); return; }
     setState('thinking');
     try {
       const { reply, action } = await rolesApi.interrupt(roleId, { spokenSoFar: ctxRef.current?.spokenSoFar ?? '', userSaid });
-      if (!reply) return;
+      if (!reply) { resumeOriginal(); return; }
       const remainder = action === 'RESUME'
         ? ctxRef.current?.fullText.slice((ctxRef.current?.spokenSoFar ?? '').length).trim()
         : '';
       speech.play(reply, persona, remainder ? () => speech.play(remainder, persona) : undefined);
     } catch {
-      // best-effort — don't surface a toast over a missed interruption
+      // API call itself failed — still resume rather than leaving the agent silent
+      resumeOriginal();
     } finally {
       setState('idle');
     }

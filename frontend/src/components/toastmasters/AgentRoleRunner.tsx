@@ -169,7 +169,7 @@ export default function AgentRoleRunner({ role, roleLabel, onRoleUpdate, onSpeak
         <div className="flex flex-col gap-3">
           {speechText && (
             <div className="flex justify-end items-center gap-2">
-              {speaking && (
+              {(speaking || interjection.state !== 'idle') && (
                 <InterruptButton state={interjection.state} onPressStart={interjection.pressStart} onPressEnd={interjection.pressEnd} />
               )}
               <SpeakButton speaking={speaking} onToggle={() => (speaking ? stop() : play(speechText, { accent: role.agentAccent, gender: role.agentGender }))} />

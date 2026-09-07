@@ -171,7 +171,7 @@ export default function SpeechAnalysisResult({ analysis, onRecordAgain, onSpeaki
         <div className="flex items-center justify-between mb-2">
           <p className="text-xs font-semibold uppercase text-surface-500">Transcript</p>
           <div className="flex items-center gap-2">
-            {roleId && speaking && (
+            {roleId && (speaking || interjection.state !== 'idle') && (
               <InterruptButton state={interjection.state} onPressStart={interjection.pressStart} onPressEnd={interjection.pressEnd} />
             )}
             <SpeakButton speaking={speaking} onToggle={() => (speaking ? stop() : play(analysis.transcript, { accent: agentAccent, gender: agentGender }))} label="Listen to speech" />

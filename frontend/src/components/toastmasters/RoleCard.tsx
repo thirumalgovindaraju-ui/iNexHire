@@ -187,7 +187,7 @@ export default function RoleCard({ role, members, excludeMemberIds, onSave, onAg
                 <div className="flex items-center justify-between mb-1">
                   <Badge variant="purple">{role.agentStatus === 'DONE' ? 'Generated' : 'Result'}</Badge>
                   <div className="flex items-center gap-2">
-                    {speaking && (
+                    {(speaking || interjection.state !== 'idle') && (
                       <InterruptButton state={interjection.state} onPressStart={interjection.pressStart} onPressEnd={interjection.pressEnd} />
                     )}
                     {speechText && (
