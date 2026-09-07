@@ -253,7 +253,7 @@ router.post('/roles/:roleId/interrupt', async (req, res, next) => {
     if (!role) throw new AppError(404, 'Role not found');
     if (role.assigneeType !== 'AI_AGENT') throw new AppError(400, 'This role is not assigned to an AI agent');
 
-    const { reply, usage } = await generateAgentInterjectionReply({
+    const { reply, action, usage } = await generateAgentInterjectionReply({
       roleName: role.roleName,
       spokenSoFar: spokenSoFar ?? '',
       userSaid,
@@ -270,7 +270,7 @@ router.post('/roles/:roleId/interrupt', async (req, res, next) => {
       },
     });
 
-    res.json({ success: true, reply, usage: { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, costUsd } });
+    res.json({ success: true, reply, action, usage: { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, costUsd } });
   } catch (err) {
     next(err);
   }

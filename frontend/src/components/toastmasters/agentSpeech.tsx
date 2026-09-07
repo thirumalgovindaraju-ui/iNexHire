@@ -93,21 +93,28 @@ export function useSpeech(onSpeakingChange?: (speaking: boolean) => void) {
   const charIndexRef = useRef(0);
   const recognitionRef = useRef<any>(null);
   const finalTranscriptRef = useRef('');
+  const keepAliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   function setSpeakingState(value: boolean) {
     setSpeaking(value);
     onSpeakingChange?.(value);
   }
 
+  function stopKeepAlive() {
+    if (keepAliveRef.current) { clearInterval(keepAliveRef.current); keepAliveRef.current = null; }
+  }
+
   // Stop speaking if this card unmounts (e.g. navigating away mid-speech).
   useEffect(() => () => {
     if (canSpeak) window.speechSynthesis.cancel();
     recognitionRef.current?.stop();
+    stopKeepAlive();
   }, []);
 
-  function play(text: string, persona?: VoicePersona) {
+  function play(text: string, persona?: VoicePersona, onDone?: () => void) {
     if (!canSpeak || !text.trim()) return;
     window.speechSynthesis.cancel(); // only one voice should speak at a time
+    stopKeepAlive();
     currentTextRef.current = text;
     charIndexRef.current = 0;
     const utterance = new SpeechSynthesisUtterance(text);
@@ -115,13 +122,22 @@ export function useSpeech(onSpeakingChange?: (speaking: boolean) => void) {
     if (voice) utterance.voice = voice;
     utterance.lang = persona?.accent === 'UK' ? 'en-GB' : persona?.accent === 'US' ? 'en-US' : voice?.lang ?? utterance.lang;
     utterance.onboundary = (e) => { charIndexRef.current = e.charIndex; };
-    utterance.onend = () => setSpeakingState(false);
-    utterance.onerror = () => setSpeakingState(false);
+    utterance.onend = () => { stopKeepAlive(); setSpeakingState(false); onDone?.(); };
+    utterance.onerror = () => { stopKeepAlive(); setSpeakingState(false); };
     window.speechSynthesis.speak(utterance);
     setSpeakingState(true);
+    // Chrome silently stops producing audio ~15s into a long utterance (the
+    // "speaking" state and this app's UI never learn it happened — no onend/onerror
+    // fires) unless the queue is nudged periodically. See Chromium bug 679437.
+    keepAliveRef.current = setInterval(() => {
+      if (!window.speechSynthesis.speaking) { stopKeepAlive(); return; }
+      window.speechSynthesis.pause();
+      window.speechSynthesis.resume();
+    }, 10000);
   }
 
   function stop() {
+    stopKeepAlive();
     window.speechSynthesis.cancel();
     setSpeakingState(false);
   }
@@ -132,6 +148,7 @@ export function useSpeech(onSpeakingChange?: (speaking: boolean) => void) {
   function beginInterrupt(): { spokenSoFar: string; fullText: string } {
     const spokenSoFar = currentTextRef.current.slice(0, charIndexRef.current || currentTextRef.current.length);
     const fullText = currentTextRef.current;
+    stopKeepAlive();
     window.speechSynthesis.cancel();
     setSpeakingState(false);
     if (canListen) {
@@ -167,12 +184,16 @@ export function useSpeech(onSpeakingChange?: (speaking: boolean) => void) {
  * Orchestrates a full push-to-talk interruption turn on top of useSpeech: hold →
  * cancel the agent's speech and listen, release → send what was said (plus how far
  * the agent had gotten) to the agent's interrupt endpoint, then speak its reply.
+ * The endpoint also classifies intent — if you told it to stop, that's the end of
+ * its turn; for anything else (a question, a comment, "repeat that") it picks the
+ * original speech back up from exactly where it left off after answering, the way
+ * a real person resumes after a genuine aside rather than abandoning their point.
  * Silently gives up if speech recognition isn't supported or nothing was heard —
  * interrupting is a nice-to-have, never worth surfacing an error over.
  */
 export function useAgentInterjection(speech: Pick<ReturnType<typeof useSpeech>, 'beginInterrupt' | 'endInterrupt' | 'play'>, roleId: string, persona?: VoicePersona) {
   const [state, setState] = useState<'idle' | 'listening' | 'thinking'>('idle');
-  const ctxRef = useRef<{ spokenSoFar: string } | null>(null);
+  const ctxRef = useRef<{ spokenSoFar: string; fullText: string } | null>(null);
 
   function pressStart() {
     ctxRef.current = speech.beginInterrupt();
@@ -185,8 +206,12 @@ export function useAgentInterjection(speech: Pick<ReturnType<typeof useSpeech>, 
     if (!userSaid) { setState('idle'); return; }
     setState('thinking');
     try {
-      const { reply } = await rolesApi.interrupt(roleId, { spokenSoFar: ctxRef.current?.spokenSoFar ?? '', userSaid });
-      if (reply) speech.play(reply, persona);
+      const { reply, action } = await rolesApi.interrupt(roleId, { spokenSoFar: ctxRef.current?.spokenSoFar ?? '', userSaid });
+      if (!reply) return;
+      const remainder = action === 'RESUME'
+        ? ctxRef.current?.fullText.slice((ctxRef.current?.spokenSoFar ?? '').length).trim()
+        : '';
+      speech.play(reply, persona, remainder ? () => speech.play(remainder, persona) : undefined);
     } catch {
       // best-effort — don't surface a toast over a missed interruption
     } finally {

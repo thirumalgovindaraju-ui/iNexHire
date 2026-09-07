@@ -1949,7 +1949,7 @@ export async function generateAgentInterjectionReply(params: {
   spokenSoFar: string;
   userSaid: string;
   wordOfDay?: string;
-}): Promise<{ reply: string; usage: AgentUsage }> {
+}): Promise<{ reply: string; action: 'STOP' | 'RESUME'; usage: AgentUsage }> {
   const prompt = `You are an experienced Toastmasters club member currently mid-speech at a club meeting, fulfilling the "${params.roleName}" role.
 
 You were just interrupted by a fellow member in the room, right after you had said:
@@ -1958,11 +1958,18 @@ You were just interrupted by a fellow member in the room, right after you had sa
 They just said to you: "${params.userSaid}"
 
 Respond the way a real person would when interrupted mid-sentence — briefly acknowledge them, answer directly if it's
-a question, and comply naturally if they're asking you to stop, wait, or repeat something. Stay in character for your
+a question, and comply naturally if they're asking you to stop, wait, hold on, or be quiet. Stay in character for your
 role. Keep it to 1-3 short sentences in natural spoken cadence, not a written paragraph.
 
+Then decide what happens next:
+- If they told you to stop, wait, pause, hold on, or otherwise end your turn, set "action" to "STOP" — you will not
+  continue speaking after this reply.
+- Otherwise (a question, a comment, a request to repeat/clarify something, encouragement, etc.) set "action" to
+  "RESUME" — after this reply, you will pick your speech back up from exactly where you left off, so your reply
+  should read as a genuine aside before continuing, not a wrap-up.
+
 Return ONLY valid JSON in this exact shape, no other text:
-{ "reply": "<your brief spoken response>" }`;
+{ "reply": "<your brief spoken response>", "action": "STOP" | "RESUME" }`;
 
   try {
     const res = await anthropic.messages.create({
@@ -1975,11 +1982,12 @@ Return ONLY valid JSON in this exact shape, no other text:
     const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
     return {
       reply: parsed.reply || '',
+      action: parsed.action === 'RESUME' ? 'RESUME' : 'STOP',
       usage: { inputTokens: res.usage.input_tokens, outputTokens: res.usage.output_tokens },
     };
   } catch (err) {
     console.error('[ai.service] generateAgentInterjectionReply failed:', err);
-    return { reply: '', usage: ZERO_USAGE };
+    return { reply: '', action: 'STOP', usage: ZERO_USAGE };
   }
 }
 

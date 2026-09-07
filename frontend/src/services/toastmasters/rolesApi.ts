@@ -36,9 +36,9 @@ export const rolesApi = {
    * what the agent had already said plus what the member said, get a brief
    * in-character reply back. */
   interrupt: async (roleId: string, data: { spokenSoFar: string; userSaid: string }): Promise<{
-    reply: string; usage: { inputTokens: number; outputTokens: number; costUsd: number };
+    reply: string; action: 'STOP' | 'RESUME'; usage: { inputTokens: number; outputTokens: number; costUsd: number };
   }> => {
     const res = await tm.post(`/toastmasters/roles/${roleId}/interrupt`, data);
-    return { reply: res.data.reply, usage: res.data.usage };
+    return { reply: res.data.reply, action: res.data.action, usage: res.data.usage };
   },
 };
