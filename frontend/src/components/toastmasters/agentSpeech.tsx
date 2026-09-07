@@ -236,12 +236,22 @@ export function useAgentInterjection(speech: Pick<ReturnType<typeof useSpeech>, 
       const text = Array.from(e.results as any).slice(e.resultIndex).map((r: any) => r[0].transcript).join(' ').trim();
       if (text) handleHeard(text);
     };
-    recognition.onerror = () => { /* e.g. transient "no-speech" — onend below restarts it */ };
+    recognition.onerror = (e: any) => {
+      // 'no-speech'/'aborted' are routine — the onend below just restarts listening.
+      // Anything else (permission denied, no mic, a network/proxy problem reaching
+      // the recognition service, ...) will keep failing the same way every restart,
+      // so stop retrying and log it — otherwise this fails completely silently and
+      // just looks like "talking does nothing" with no way to tell why.
+      if (e?.error && e.error !== 'no-speech' && e.error !== 'aborted') {
+        console.warn(`[agentSpeech] speech recognition error: "${e.error}" — interruption listening stopped.`, e);
+        stopListening();
+      }
+    };
     recognition.onend = () => {
       // Chrome ends a "continuous" session after a stretch of silence regardless —
       // keep it running for as long as we still want to be listening.
       if (wantListeningRef.current && recognitionRef.current === recognition) {
-        try { recognition.start(); } catch { /* ignore — will retry on the next onend */ }
+        try { recognition.start(); } catch (err) { console.warn('[agentSpeech] failed to restart speech recognition:', err); }
       }
     };
     recognitionRef.current = recognition;
