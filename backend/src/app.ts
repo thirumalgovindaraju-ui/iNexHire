@@ -40,6 +40,8 @@ import highlightsRoutes from './routes/highlights.routes';
 import compensationRoutes from './routes/compensation.routes';
 import brandingRoutes from './routes/branding.routes';
 import toastmastersRoutes from './routes/toastmasters';
+import googleRoutes from './routes/integrations/google.routes';
+import paAgentRoutes from './routes/paAgent.routes';
 
 export function createApp() {
   const app = express();
@@ -117,6 +119,8 @@ export function createApp() {
   app.use('/api/compensation', compensationRoutes);
   app.use('/api/branding', brandingRoutes);
   app.use('/api/toastmasters', toastmastersRoutes);
+  app.use('/api/integrations/google', googleRoutes);
+  app.use('/api/pa', paAgentRoutes);
 
   // ─── 404 ───────────────────────────────────────────────────────────────────
   app.use((_req, res) => {

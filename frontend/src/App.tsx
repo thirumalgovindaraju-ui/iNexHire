@@ -60,6 +60,8 @@ import ToastmastersReport from './pages/toastmasters/Report';
 // Settings
 import TeamRoles from './pages/settings/TeamRoles';
 import SSOSettings from './pages/settings/SSOSettings';
+// AI PA Agent
+import PaAgentDashboard from './pages/paAgent/PaAgentDashboard';
 // Interview
 import WaitingRoom from './pages/interview/WaitingRoom';
 import InterviewRoom from './pages/interview/InterviewRoom';
@@ -145,6 +147,7 @@ export default function App() {
           {/* Settings */}
           <Route path="/settings/team" element={<TeamRoles />} />
           <Route path="/settings/sso" element={<SSOSettings />} />
+          <Route path="/pa-agent" element={<PaAgentDashboard />} />
         </Route>
         <Route element={<CandidateLayout />}>
           <Route path="/interview/:token" element={<WaitingRoom />} />

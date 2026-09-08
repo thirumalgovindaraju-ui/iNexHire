@@ -1,6 +1,6 @@
 // src/layouts/DashboardLayout.tsx — NexHire v3 Final
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Briefcase, Users, BarChart2, LogOut, Bell, Search, Shield, FileText, Zap, Clock, Settings, Database, GitBranch, Brain, Heart, Trophy, ClipboardList, Palette, MessageSquare, Play, Globe, AlertTriangle, UserCog, MessageCircle, TrendingUp, Key, LayoutTemplate, ShieldCheck, Video, Smartphone, IndianRupee, Mic2, UserCircle2 } from 'lucide-react';
+import { LayoutDashboard, Briefcase, Users, BarChart2, LogOut, Bell, Search, Shield, FileText, Zap, Clock, Settings, Database, GitBranch, Brain, Heart, Trophy, ClipboardList, Palette, MessageSquare, Play, Globe, AlertTriangle, UserCog, MessageCircle, TrendingUp, Key, LayoutTemplate, ShieldCheck, Video, Smartphone, IndianRupee, Mic2, UserCircle2, Bot } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { authApi } from '../services/api';
 import { useState } from 'react';
@@ -8,6 +8,7 @@ import { useState } from 'react';
 const NAV = [
   { section: 'Workspace', items: [
     { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+    { to: '/pa-agent', icon: Bot, label: 'AI PA Agent', badge: 'NEW' },
     { to: '/openings', icon: Briefcase, label: 'Job Openings' },
     { to: '/templates', icon: LayoutTemplate, label: 'Job Templates', badge: 'NEW' },
     { to: '/candidates', icon: Users, label: 'Candidates' },

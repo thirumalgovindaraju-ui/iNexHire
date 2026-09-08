@@ -44,8 +44,16 @@ export const env = {
   twilioWhatsAppNumber: optional('TWILIO_WHATSAPP_NUMBER', ''), // e.g. "whatsapp:+14155238886"
 
   judge0ApiKey: optional('JUDGE0_API_KEY', ''), // RapidAPI key for judge0-ce.p.rapidapi.com — optional, Claude reviews code without it
+
+  googleClientId: optional('GOOGLE_CLIENT_ID', ''),
+  googleClientSecret: optional('GOOGLE_CLIENT_SECRET', ''),
+  googleRedirectUri: optional('GOOGLE_REDIRECT_URI', 'http://localhost:4000/api/integrations/google/callback'),
 };
 
 if (!env.openaiApiKey) {
   console.warn('[env] OPENAI_API_KEY not set — Whisper STT will be unavailable. All other AI features run on Anthropic and are unaffected.');
+}
+
+if (!env.googleClientId || !env.googleClientSecret) {
+  console.warn('[env] GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET not set — the AI PA Agent\'s Google connect flow will be unavailable until a Google Cloud OAuth app is registered.');
 }

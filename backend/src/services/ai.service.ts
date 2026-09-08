@@ -2167,3 +2167,96 @@ Return ONLY valid JSON in this exact shape, no other text:
     return { topics: [], usage: ZERO_USAGE };
   }
 }
+
+// ─── AI PA Agent ───────────────────────────────────────────────────────────
+
+export interface PaBriefingActionItem { title: string; description: string; priority: 'HIGH' | 'MEDIUM' | 'LOW'; sourceGmailId?: string }
+export interface PaBriefingNeedsReply { from: string; subject: string; gmailId: string }
+export interface PaBriefingScheduleHighlight { title: string; time: string }
+export interface PaBriefingResult {
+  actionItems: PaBriefingActionItem[];
+  needsReply: PaBriefingNeedsReply[];
+  scheduleHighlights: PaBriefingScheduleHighlight[];
+}
+
+/** Summarizes a user's recent emails + today's calendar into a daily "here's what needs
+ * your attention" briefing for the AI PA Agent — action items, mail worth a reply, and
+ * today's schedule highlights. */
+export async function generatePaBriefing(params: {
+  userName: string;
+  emails: { gmailId: string; from: string; subject: string; snippet: string; date: string }[];
+  events: { title: string; start: string; end: string }[];
+}): Promise<PaBriefingResult> {
+  const prompt = `You are an experienced executive assistant preparing ${params.userName}'s daily briefing.
+
+RECENT EMAILS (last 2 days):
+${params.emails.length ? params.emails.map((e) => `- [${e.gmailId}] From: ${e.from} | Subject: ${e.subject} | ${e.snippet}`).join('\n') : '(none)'}
+
+TODAY'S CALENDAR:
+${params.events.length ? params.events.map((e) => `- ${e.title} (${e.start} - ${e.end})`).join('\n') : '(nothing scheduled)'}
+
+Produce a concise daily briefing:
+1. actionItems — concrete things ${params.userName} likely needs to do today, drawn from the emails and calendar (e.g. "Approve the Q3 budget email from Raj", "Prep for the 2pm board sync"). Give each a priority. Include the source email's id in "sourceGmailId" when an item comes from a specific email, omit it otherwise.
+2. needsReply — emails that clearly expect a reply and haven't been answered, from the list above only (use their exact gmailId).
+3. scheduleHighlights — the day's meetings/events worth calling out, from the calendar list only.
+
+Return ONLY valid JSON in this exact shape, no other text:
+{
+  "actionItems": [{ "title": "<short action>", "description": "<1 sentence why>", "priority": "HIGH" | "MEDIUM" | "LOW", "sourceGmailId": "<id or omit>" }],
+  "needsReply": [{ "from": "<sender>", "subject": "<subject>", "gmailId": "<id>" }],
+  "scheduleHighlights": [{ "title": "<event>", "time": "<human-readable time>" }]
+}`;
+
+  try {
+    const res = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 1500,
+      temperature: 0.4,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const text = res.content[0].type === 'text' ? res.content[0].text : '{}';
+    const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
+    return {
+      actionItems: Array.isArray(parsed.actionItems) ? parsed.actionItems : [],
+      needsReply: Array.isArray(parsed.needsReply) ? parsed.needsReply : [],
+      scheduleHighlights: Array.isArray(parsed.scheduleHighlights) ? parsed.scheduleHighlights : [],
+    };
+  } catch (err) {
+    console.error('[ai.service] generatePaBriefing failed:', err);
+    return { actionItems: [], needsReply: [], scheduleHighlights: [] };
+  }
+}
+
+/** Drafts an email from a natural-language instruction (e.g. "reply to Raj about the Q3
+ * budget, tell him it's approved") — for the AI PA Agent's draft-only flow. Never sent
+ * from here; the caller saves this as a real Gmail draft for a human to review/send. */
+export async function generatePaEmailDraft(params: { instruction: string; context?: string }): Promise<{ to: string; subject: string; body: string }> {
+  const prompt = `You are an experienced executive assistant drafting an email on your manager's behalf, to be reviewed before sending.
+
+Instruction: "${params.instruction}"
+${params.context ? `\nRelevant context (e.g. the email being replied to):\n${params.context}` : ''}
+
+Write a professional, concise email. If a recipient's email address isn't given or inferable, leave "to" empty.
+
+Return ONLY valid JSON in this exact shape, no other text:
+{ "to": "<email address or empty string>", "subject": "<subject line>", "body": "<email body, plain text>" }`;
+
+  try {
+    const res = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 800,
+      temperature: 0.5,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const text = res.content[0].type === 'text' ? res.content[0].text : '{}';
+    const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
+    return {
+      to: typeof parsed.to === 'string' ? parsed.to : '',
+      subject: typeof parsed.subject === 'string' ? parsed.subject : 'Untitled',
+      body: typeof parsed.body === 'string' ? parsed.body : '',
+    };
+  } catch (err) {
+    console.error('[ai.service] generatePaEmailDraft failed:', err);
+    return { to: '', subject: 'Untitled', body: '' };
+  }
+}
